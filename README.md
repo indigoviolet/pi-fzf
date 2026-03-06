@@ -77,7 +77,58 @@ Add a `shortcut` field to trigger a command via a keyboard shortcut instead of t
 
 The shortcut format follows Pi's [keybinding syntax](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/keybindings.md#key-format): `modifier+key` where modifiers are `ctrl`, `shift`, `alt` (combinable).
 
+## Preview Pane
+
+Commands can optionally display a preview pane showing content for the selected candidate. Add a `preview` field with a command template:
+
+```json
+{
+  "commands": {
+    "file": {
+      "list": "fd --type f --max-depth 4",
+      "action": "Read and explain {{selected}}",
+      "preview": "bat --style=numbers --color=always {{selected}} 2>/dev/null || cat {{selected}}"
+    }
+  }
+}
+```
+
+When `preview` is configured, the selector splits into two panes:
+- **Left pane**: Candidate list (35% width)
+- **Right pane**: Preview output (65% width)
+
+The preview command receives the same `{{selected}}` placeholder as actions. Its output is displayed in the preview pane as you navigate through candidates.
+
+**Keyboard shortcuts for preview:**
+- `Shift+↑` / `Shift+↓` — Scroll preview content (default, configurable)
+- Standard navigation keys work in the list pane
+
+### Preview Settings
+
+You can customize preview scrolling behavior in the `settings` section:
+
+```json
+{
+  "settings": {
+    "previewScrollUp": "shift+up",
+    "previewScrollDown": "shift+down",
+    "previewScrollLines": 5
+  },
+  "commands": { ... }
+}
+```
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `previewScrollUp` | `shift+up` | Keybinding to scroll preview up |
+| `previewScrollDown` | `shift+down` | Keybinding to scroll preview down |
+| `previewScrollLines` | `5` | Number of lines to scroll at a time |
+
+Keybindings use Pi's [keybinding syntax](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/keybindings.md#key-format): `modifier+key` (e.g., `alt+k`, `ctrl+u`).
+
 ## Actions
+
+
 
 ### Editor (default)
 
@@ -148,7 +199,8 @@ This works for any key: use `!`, `$`, or any character as a custom trigger for y
 ```json
 "file": {
   "list": "fd --type f --max-depth 4",
-  "action": "Read and explain {{selected}}"
+  "action": "Read and explain {{selected}}",
+  "preview": "bat --style=numbers --color=always {{selected}} 2>/dev/null || cat {{selected}}"
 }
 ```
 
@@ -166,7 +218,8 @@ This works for any key: use `!`, `$`, or any character as a custom trigger for y
 ```json
 "branch": {
   "list": "git branch --format='%(refname:short)'",
-  "action": { "type": "bash", "template": "git checkout {{selected}}" }
+  "action": { "type": "bash", "template": "git checkout {{selected}}" },
+  "preview": "git log --oneline -10 {{selected}}"
 }
 ```
 

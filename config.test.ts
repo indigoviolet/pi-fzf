@@ -2,7 +2,12 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadFzfConfig, renderTemplate, resolveAction } from "./config.js";
+import {
+  loadFzfConfig,
+  loadFzfSettings,
+  renderTemplate,
+  resolveAction,
+} from "./config.js";
 
 describe("renderTemplate", () => {
   it("replaces {{selected}} placeholder", () => {
@@ -201,5 +206,119 @@ describe("loadFzfConfig", () => {
 
     expect(testCmd).toBeDefined();
     expect(testCmd?.shortcut).toBeUndefined();
+  });
+
+  it("loads preview command when specified", () => {
+    writeProjectConfig({
+      commands: {
+        file: {
+          list: "fd --type f",
+          action: "Read {{selected}}",
+          preview: "bat {{selected}}",
+        },
+      },
+    });
+
+    const result = loadFzfConfig(testDir);
+    const fileCmd = result.find((c) => c.name === "file");
+
+    expect(fileCmd).toBeDefined();
+    expect(fileCmd?.preview).toBe("bat {{selected}}");
+  });
+
+  it("preview is undefined when not specified", () => {
+    writeProjectConfig({
+      commands: {
+        test: { list: "ls", action: "Read {{selected}}" },
+      },
+    });
+
+    const result = loadFzfConfig(testDir);
+    const testCmd = result.find((c) => c.name === "test");
+
+    expect(testCmd).toBeDefined();
+    expect(testCmd?.preview).toBeUndefined();
+  });
+});
+
+describe("loadFzfSettings", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = join(tmpdir(), `pi-fzf-settings-test-${Date.now()}`);
+    mkdirSync(join(testDir, ".pi"), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  function writeProjectConfig(config: object) {
+    writeFileSync(join(testDir, ".pi", "fzf.json"), JSON.stringify(config));
+  }
+
+  it("returns default settings when no config exists", () => {
+    const settings = loadFzfSettings(testDir);
+
+    expect(settings.previewScrollUp).toBe("shift+up");
+    expect(settings.previewScrollDown).toBe("shift+down");
+    expect(settings.previewScrollLines).toBe(5);
+  });
+
+  it("loads custom keybindings from settings", () => {
+    writeProjectConfig({
+      commands: {},
+      settings: {
+        previewScrollUp: "alt+k",
+        previewScrollDown: "alt+j",
+      },
+    });
+
+    const settings = loadFzfSettings(testDir);
+
+    expect(settings.previewScrollUp).toBe("alt+k");
+    expect(settings.previewScrollDown).toBe("alt+j");
+  });
+
+  it("loads custom scroll lines from settings", () => {
+    writeProjectConfig({
+      commands: {},
+      settings: {
+        previewScrollLines: 10,
+      },
+    });
+
+    const settings = loadFzfSettings(testDir);
+
+    expect(settings.previewScrollLines).toBe(10);
+  });
+
+  it("uses defaults for missing settings values", () => {
+    writeProjectConfig({
+      commands: {},
+      settings: {
+        previewScrollUp: "alt+p",
+        // previewScrollDown and previewScrollLines not specified
+      },
+    });
+
+    const settings = loadFzfSettings(testDir);
+
+    expect(settings.previewScrollUp).toBe("alt+p");
+    expect(settings.previewScrollDown).toBe("shift+down"); // default
+    expect(settings.previewScrollLines).toBe(5); // default
+  });
+
+  it("handles empty settings object", () => {
+    writeProjectConfig({
+      commands: {},
+      settings: {},
+    });
+
+    const settings = loadFzfSettings(testDir);
+
+    expect(settings.previewScrollUp).toBe("shift+up");
+    expect(settings.previewScrollDown).toBe("shift+down");
+    expect(settings.previewScrollLines).toBe(5);
   });
 });

@@ -23,10 +23,22 @@ export interface FzfCommandConfig {
   action: FzfAction;
   /** Optional keyboard shortcut (e.g. "ctrl+shift+f") */
   shortcut?: string;
+  /** Optional preview command (receives {{selected}} placeholder) */
+  preview?: string;
+}
+
+export interface FzfSettingsConfig {
+  /** Keybinding for scrolling preview up (default: "shift+up") */
+  previewScrollUp?: string;
+  /** Keybinding for scrolling preview down (default: "shift+down") */
+  previewScrollDown?: string;
+  /** Number of lines to scroll at a time (default: 5) */
+  previewScrollLines?: number;
 }
 
 export interface FzfConfig {
   commands: Record<string, FzfCommandConfig>;
+  settings?: FzfSettingsConfig;
 }
 
 // --- Normalized types (resolved after parsing) ---
@@ -44,7 +56,24 @@ export interface ResolvedCommand {
   action: ResolvedAction;
   /** Optional keyboard shortcut (e.g. "ctrl+shift+f") */
   shortcut?: string;
+  /** Optional preview command (receives {{selected}} placeholder) */
+  preview?: string;
 }
+
+export interface FzfSettings {
+  /** Keybinding for scrolling preview up */
+  previewScrollUp: string;
+  /** Keybinding for scrolling preview down */
+  previewScrollDown: string;
+  /** Number of lines to scroll at a time */
+  previewScrollLines: number;
+}
+
+const DEFAULT_SETTINGS: FzfSettings = {
+  previewScrollUp: "shift+up",
+  previewScrollDown: "shift+down",
+  previewScrollLines: 5,
+};
 
 // --- Config loading ---
 
@@ -99,7 +128,39 @@ export function loadFzfConfig(cwd: string): ResolvedCommand[] {
     list: cmd.list,
     action: resolveAction(cmd.action),
     shortcut: cmd.shortcut,
+    preview: cmd.preview,
   }));
+}
+
+/**
+ * Load fzf settings from global and project-local configs.
+ * Project-local settings override global settings.
+ */
+export function loadFzfSettings(cwd: string): FzfSettings {
+  const globalPath = join(homedir(), ".pi", "agent", "fzf.json");
+  const projectPath = join(cwd, ".pi", "fzf.json");
+
+  const globalConfig = loadConfigFile(globalPath);
+  const projectConfig = loadConfigFile(projectPath);
+
+  // Merge settings: project overrides global
+  const globalSettings = globalConfig?.settings ?? {};
+  const projectSettings = projectConfig?.settings ?? {};
+
+  return {
+    previewScrollUp:
+      projectSettings.previewScrollUp ??
+      globalSettings.previewScrollUp ??
+      DEFAULT_SETTINGS.previewScrollUp,
+    previewScrollDown:
+      projectSettings.previewScrollDown ??
+      globalSettings.previewScrollDown ??
+      DEFAULT_SETTINGS.previewScrollDown,
+    previewScrollLines:
+      projectSettings.previewScrollLines ??
+      globalSettings.previewScrollLines ??
+      DEFAULT_SETTINGS.previewScrollLines,
+  };
 }
 
 /**

@@ -1,9 +1,15 @@
 {
+  "settings": {
+    "previewScrollUp": "shift+up",
+    "previewScrollDown": "shift+down",
+    "previewScrollLines": 5
+  },
   "commands": {
     "file": {
       "list": "fd --type f --max-depth 4",
       "action": "Read and explain {{selected}}",
-      "shortcut": "ctrl+shift+f"
+      "shortcut": "ctrl+shift+f",
+      "preview": "bat --style=numbers --color=always {{selected}} 2>/dev/null || cat {{selected}}"
     },
     "file-content": {
       "list": "fd --type f --max-depth 4",
@@ -19,7 +25,8 @@
     },
     "branch": {
       "list": "git branch --format='%(refname:short)'",
-      "action": { "type": "bash", "template": "git checkout {{selected}}" }
+      "action": { "type": "bash", "template": "git checkout {{selected}}" },
+      "preview": "git log --oneline -10 {{selected}}"
     },
     "git-diff": {
       "list": "git diff --name-only",

@@ -1,13 +1,15 @@
 import { editorKey } from "@mariozechner/pi-coding-agent";
-import type { Focusable } from "@mariozechner/pi-tui";
+import type { Focusable, KeyId } from "@mariozechner/pi-tui";
 import {
   Container,
   getEditorKeybindings,
   Input,
+  matchesKey,
   truncateToWidth,
   visibleWidth,
 } from "@mariozechner/pi-tui";
 import { extendedMatch, Fzf, type FzfResultItem } from "fzf";
+import type { FzfSettings } from "./config.js";
 
 export interface SelectorTheme {
   accent: (text: string) => string;
@@ -31,6 +33,12 @@ interface FzfEntry {
  *
  * Implements Focusable so the Input child gets proper IME cursor positioning.
  */
+const DEFAULT_SETTINGS: FzfSettings = {
+  previewScrollUp: "shift+up",
+  previewScrollDown: "shift+down",
+  previewScrollLines: 5,
+};
+
 export class FuzzySelector extends Container implements Focusable {
   private input: Input;
   private candidates: string[];
@@ -40,9 +48,20 @@ export class FuzzySelector extends Container implements Focusable {
   private selectorTheme: SelectorTheme;
   private title: string;
   private fzf: Fzf<string[]>;
+  private previewTemplate?: string;
+  private settings: FzfSettings;
 
   public onSelect?: (item: string) => void;
   public onCancel?: () => void;
+
+  // --- Preview state ---
+  private previewContent: string[] = [];
+  private previewScrollOffset = 0;
+  private previewError: string | null = null;
+  private lastPreviewedCandidate: string | null = null;
+
+  // --- Preview callbacks ---
+  public onPreviewRequest?: (candidate: string) => Promise<string[]>;
 
   // --- Focusable ---
   private _focused = false;
@@ -54,17 +73,60 @@ export class FuzzySelector extends Container implements Focusable {
     this.input.focused = value;
   }
 
+  // --- Preview methods ---
+  setPreviewContent(lines: string[]): void {
+    this.previewContent = lines;
+    this.previewError = null;
+    // NOTE: Do not reset lastPreviewedCandidate here - it's used to
+    // deduplicate requests when typing filters the same candidate
+  }
+
+  setPreviewError(error: string): void {
+    this.previewError = error;
+  }
+
+  /**
+   * Trigger the initial preview load. Call this after setting onPreviewRequest.
+   */
+  async triggerInitialPreview(): Promise<void> {
+    await this.loadPreviewForCurrentSelection();
+  }
+
+  private async loadPreviewForCurrentSelection(): Promise<void> {
+    const entry = this.filtered[this.selectedIndex];
+    if (!entry || !this.previewTemplate) return;
+
+    const candidate = entry.item;
+    // Skip if we already loaded this candidate's preview
+    if (this.lastPreviewedCandidate === candidate) return;
+    this.lastPreviewedCandidate = candidate;
+
+    // Call the preview callback if available
+    if (this.onPreviewRequest) {
+      try {
+        const lines = await this.onPreviewRequest(candidate);
+        this.setPreviewContent(lines);
+      } catch (error) {
+        this.setPreviewError(error instanceof Error ? String(error) : error);
+      }
+    }
+  }
+
   constructor(
     candidates: string[],
     title: string,
     maxVisible: number,
     theme: SelectorTheme,
+    previewTemplate?: string,
+    settings?: FzfSettings,
   ) {
     super();
     this.candidates = candidates;
     this.title = title;
     this.maxVisible = maxVisible;
     this.selectorTheme = theme;
+    this.previewTemplate = previewTemplate;
+    this.settings = settings ?? DEFAULT_SETTINGS;
 
     // Initial unfiltered list
     this.filtered = candidates.map((item) => ({
@@ -93,6 +155,8 @@ export class FuzzySelector extends Container implements Focusable {
             ? this.filtered.length - 1
             : this.selectedIndex - 1;
       }
+      // Trigger preview load on selection change
+      this.loadPreviewForCurrentSelection();
       return;
     }
 
@@ -103,6 +167,8 @@ export class FuzzySelector extends Container implements Focusable {
             ? 0
             : this.selectedIndex + 1;
       }
+      // Trigger preview load on selection change
+      this.loadPreviewForCurrentSelection();
       return;
     }
 
@@ -110,6 +176,8 @@ export class FuzzySelector extends Container implements Focusable {
       if (this.filtered.length > 0) {
         this.selectedIndex = Math.max(0, this.selectedIndex - this.maxVisible);
       }
+      // Trigger preview load on selection change
+      this.loadPreviewForCurrentSelection();
       return;
     }
 
@@ -120,7 +188,31 @@ export class FuzzySelector extends Container implements Focusable {
           this.selectedIndex + this.maxVisible,
         );
       }
+      // Trigger preview load on selection change
+      this.loadPreviewForCurrentSelection();
       return;
+    }
+
+    // Preview scrolling: configurable keybindings
+    if (this.previewTemplate) {
+      if (matchesKey(data, this.settings.previewScrollUp as KeyId)) {
+        this.previewScrollOffset = Math.max(
+          0,
+          this.previewScrollOffset - this.settings.previewScrollLines,
+        );
+        return;
+      }
+      if (matchesKey(data, this.settings.previewScrollDown as KeyId)) {
+        const maxScroll = Math.max(
+          0,
+          this.previewContent.length - this.maxVisible,
+        );
+        this.previewScrollOffset = Math.min(
+          maxScroll,
+          this.previewScrollOffset + this.settings.previewScrollLines,
+        );
+        return;
+      }
     }
 
     // Select (uses selectConfirm keybinding)
@@ -146,6 +238,9 @@ export class FuzzySelector extends Container implements Focusable {
     // Re-filter if query changed
     if (newValue !== prevValue) {
       this.applyFilter(newValue);
+      // Reset preview when filter changes
+      this.previewScrollOffset = 0;
+      this.loadPreviewForCurrentSelection();
     }
   }
 
@@ -195,10 +290,14 @@ export class FuzzySelector extends Container implements Focusable {
       t.border("├") + t.border("─".repeat(innerWidth)) + t.border("┤"),
     );
 
-    // Filtered list
-    if (this.filtered.length === 0) {
-      lines.push(boxLine(t.muted("  No matches"), innerWidth, side));
-    } else {
+    // Two-pane layout when preview is configured
+    if (this.previewTemplate) {
+      const listWidth = Math.floor(innerWidth * 0.35);
+      const previewWidth = innerWidth - listWidth - 1;
+      // Render list on left, preview on right
+      const listLines: string[] = [];
+      const previewLines: string[] = [];
+
       // Calculate visible window (scroll around selection)
       const total = this.filtered.length;
       const visible = Math.min(this.maxVisible, total);
@@ -208,26 +307,64 @@ export class FuzzySelector extends Container implements Focusable {
       );
       const endIndex = Math.min(startIndex + visible, total);
 
-      for (let i = startIndex; i < endIndex; i++) {
-        const entry = this.filtered[i];
-        if (!entry) continue;
-        const isSelected = i === this.selectedIndex;
-        const prefix = isSelected ? "→ " : "  ";
+      // List content
+      if (this.filtered.length === 0) {
+        listLines.push(t.muted("  No matches"));
+      } else {
+        for (let i = startIndex; i < endIndex; i++) {
+          const entry = this.filtered[i];
+          if (!entry) continue;
+          const isSelected = i === this.selectedIndex;
+          const prefix = isSelected ? "→ " : "  ";
 
-        // Build highlighted text
-        const highlighted = highlightMatches(
-          entry.item,
-          entry.positions,
-          t.match,
-        );
+          const highlighted = highlightMatches(
+            entry.item,
+            entry.positions,
+            t.match,
+          );
 
-        const content = isSelected
-          ? t.accent(prefix) + t.accent(highlighted)
-          : prefix + highlighted;
+          const content = isSelected
+            ? t.accent(prefix) + t.accent(highlighted)
+            : prefix + highlighted;
 
-        lines.push(
-          boxLine(truncateToWidth(content, innerWidth), innerWidth, side),
-        );
+          listLines.push(
+            truncateToWidth(content, listWidth - 3, ""), // -3 for prefix and padding
+          );
+        }
+      }
+
+      // Preview content - always use maxVisible rows for consistent height
+      if (this.previewError) {
+        previewLines.push(t.muted("  Error:"));
+        previewLines.push(t.muted(`  ${this.previewError}`));
+      } else if (this.previewContent.length > 0) {
+        const maxPreviewLines = this.maxVisible;
+        for (
+          let i = 0;
+          i < this.previewContent.length - this.previewScrollOffset &&
+          i < maxPreviewLines;
+          i++
+        ) {
+          const line = this.previewContent[this.previewScrollOffset + i];
+          if (line) {
+            previewLines.push(truncateToWidth(line, previewWidth - 2, ""));
+          }
+        }
+      }
+      // Show blank when no content (no "Loading..." or "(empty)" message)
+
+      // Combine side by side - pad each column to fixed width
+      // Always render at least maxVisible rows to maintain consistent height
+      const rowCount = Math.max(
+        listLines.length,
+        previewLines.length,
+        this.maxVisible,
+      );
+      for (let i = 0; i < rowCount; i++) {
+        const listCol = padToWidth(listLines[i] || "", listWidth);
+        const previewCol = padToWidth(previewLines[i] || "", previewWidth);
+        const middleBorder = t.border("│");
+        lines.push(side + listCol + middleBorder + previewCol + side);
       }
 
       // Scroll indicator
@@ -235,22 +372,76 @@ export class FuzzySelector extends Container implements Focusable {
         const info = `  (${this.selectedIndex + 1}/${total})`;
         lines.push(boxLine(t.dim(info), innerWidth, side));
       }
-    }
 
-    // Help line with configured keybindings
-    const upKey = prettyKey(editorKey("selectUp"));
-    const downKey = prettyKey(editorKey("selectDown"));
-    const confirmKey = prettyKey(editorKey("selectConfirm"));
-    const cancelKey = prettyKey(editorKey("selectCancel"));
-    lines.push(
-      boxLine(
-        t.dim(
-          ` ${upKey} ${downKey} navigate • ${confirmKey} select • ${cancelKey} cancel`,
+      // Help line
+      const upKey = prettyKey(editorKey("selectUp"));
+      const downKey = prettyKey(editorKey("selectDown"));
+      const confirmKey = prettyKey(editorKey("selectConfirm"));
+      const cancelKey = prettyKey(editorKey("selectCancel"));
+      const helpText = this.previewTemplate
+        ? ` ${upKey} ${downKey} nav • ${confirmKey} select • ${cancelKey} cancel • shift+↑↓ scroll preview`
+        : ` ${upKey} ${downKey} navigate • ${confirmKey} select • ${cancelKey} cancel`;
+      lines.push(boxLine(t.dim(helpText), innerWidth, side));
+    } else {
+      // Single pane layout (no preview)
+      // Filtered list
+      if (this.filtered.length === 0) {
+        lines.push(boxLine(t.muted("  No matches"), innerWidth, side));
+      } else {
+        const total = this.filtered.length;
+        const visible = Math.min(this.maxVisible, total);
+        const startIndex = Math.max(
+          0,
+          Math.min(
+            this.selectedIndex - Math.floor(visible / 2),
+            total - visible,
+          ),
+        );
+        const endIndex = Math.min(startIndex + visible, total);
+
+        for (let i = startIndex; i < endIndex; i++) {
+          const entry = this.filtered[i];
+          if (!entry) continue;
+          const isSelected = i === this.selectedIndex;
+          const prefix = isSelected ? "→ " : "  ";
+
+          const highlighted = highlightMatches(
+            entry.item,
+            entry.positions,
+            t.match,
+          );
+
+          const content = isSelected
+            ? t.accent(prefix) + t.accent(highlighted)
+            : prefix + highlighted;
+
+          lines.push(
+            boxLine(truncateToWidth(content, innerWidth), innerWidth, side),
+          );
+        }
+
+        // Scroll indicator
+        if (total > visible) {
+          const info = `  (${this.selectedIndex + 1}/${total})`;
+          lines.push(boxLine(t.dim(info), innerWidth, side));
+        }
+      }
+
+      // Help line
+      const upKey = prettyKey(editorKey("selectUp"));
+      const downKey = prettyKey(editorKey("selectDown"));
+      const confirmKey = prettyKey(editorKey("selectConfirm"));
+      const cancelKey = prettyKey(editorKey("selectCancel"));
+      lines.push(
+        boxLine(
+          t.dim(
+            ` ${upKey} ${downKey} navigate • ${confirmKey} select • ${cancelKey} cancel`,
+          ),
+          innerWidth,
+          side,
         ),
-        innerWidth,
-        side,
-      ),
-    );
+      );
+    }
 
     // Bottom border with rounded corners
     lines.push(
@@ -312,4 +503,15 @@ function highlightMatches(
     result += positions.has(i) ? highlightFn(char) : char;
   }
   return result;
+}
+
+/**
+ * Pad (or truncate) a string to exactly the given visible width.
+ * Handles ANSI escape codes correctly.
+ */
+function padToWidth(content: string, targetWidth: number): string {
+  const truncated = truncateToWidth(content, targetWidth, "");
+  const currentWidth = visibleWidth(truncated);
+  const padding = Math.max(0, targetWidth - currentWidth);
+  return truncated + " ".repeat(padding);
 }
