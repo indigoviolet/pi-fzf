@@ -76,10 +76,22 @@ async function runFzfSelector(
   let tuiRef: TUI | undefined;
 
   const customOptions =
-    cmd.placement === "overlay" && cmd.preview
+    cmd.placement === "overlay"
       ? {
           overlay: true,
-          overlayOptions: { width: "80%", minWidth: 120, maxHeight: "80%" },
+          // Pin overlay top position so filtering doesn't make the input jump.
+          overlayOptions: cmd.preview
+            ? {
+                anchor: "top-center",
+                offsetY: 5,
+                width: "80%",
+                minWidth: 120,
+                maxHeight: "80%",
+              }
+            : {
+                anchor: "top-center",
+                offsetY: 5,
+              },
         }
       : {
           // Keep editor visible while custom mode captures focused input.
