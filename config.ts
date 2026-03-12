@@ -5,6 +5,7 @@ import { join } from "node:path";
 // --- Types ---
 
 export type BashOutput = "notify" | "editor" | "send";
+export type SelectorPlacement = "overlay" | "aboveEditor" | "belowEditor";
 
 export interface FzfActionLong {
   type: "editor" | "send" | "bash";
@@ -25,6 +26,8 @@ export interface FzfCommandConfig {
   shortcut?: string;
   /** Optional preview command (receives {{selected}} placeholder) */
   preview?: string;
+  /** Where the selector should render (default: "overlay") */
+  placement?: SelectorPlacement;
 }
 
 export interface FzfSettingsConfig {
@@ -37,6 +40,8 @@ export interface FzfSettingsConfig {
 }
 
 export interface FzfConfig {
+  /** Default placement for selector widgets (can be overridden per command) */
+  defaultPlacement?: SelectorPlacement;
   commands: Record<string, FzfCommandConfig>;
   settings?: FzfSettingsConfig;
 }
@@ -58,6 +63,8 @@ export interface ResolvedCommand {
   shortcut?: string;
   /** Optional preview command (receives {{selected}} placeholder) */
   preview?: string;
+  /** Where the selector widget should render */
+  placement: SelectorPlacement;
 }
 
 export interface FzfSettings {
@@ -123,12 +130,19 @@ export function loadFzfConfig(cwd: string): ResolvedCommand[] {
     ...(projectConfig?.commands ?? {}),
   };
 
+  // Placement precedence: command > project default > global default > hard default
+  const defaultPlacement: SelectorPlacement =
+    projectConfig?.defaultPlacement ??
+    globalConfig?.defaultPlacement ??
+    "overlay";
+
   return Object.entries(merged).map(([name, cmd]) => ({
     name,
     list: cmd.list,
     action: resolveAction(cmd.action),
     shortcut: cmd.shortcut,
     preview: cmd.preview,
+    placement: cmd.placement ?? defaultPlacement,
   }));
 }
 

@@ -77,6 +77,38 @@ Add a `shortcut` field to trigger a command via a keyboard shortcut instead of t
 
 The shortcut format follows Pi's [keybinding syntax](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/keybindings.md#key-format): `modifier+key` where modifiers are `ctrl`, `shift`, `alt` (combinable).
 
+### Selector Placement
+
+You can control selector widget placement in two ways:
+
+- Per-command via `placement`
+- Globally via top-level `defaultPlacement`
+
+Allowed values:
+
+- `"overlay"` (default; classic floating panel)
+- `"aboveEditor"`
+- `"belowEditor"`
+
+```json
+{
+  "defaultPlacement": "belowEditor",
+  "commands": {
+    "file": {
+      "list": "fd --type f --max-depth 4",
+      "action": "Read and explain {{selected}}"
+    },
+    "branch": {
+      "list": "git branch --format='%(refname:short)'",
+      "action": { "type": "bash", "template": "git checkout {{selected}}" },
+      "placement": "aboveEditor"
+    }
+  }
+}
+```
+
+Precedence: `command.placement` → `defaultPlacement` → `"overlay"`.
+
 ## Preview Pane
 
 Commands can optionally display a preview pane showing content for the selected candidate. Add a `preview` field with a command template:
@@ -132,7 +164,7 @@ Keybindings use Pi's [keybinding syntax](https://github.com/badlogic/pi-mono/blo
 
 ### Editor (default)
 
-Fills the Pi editor with text. You can review and edit before sending.
+Pastes text into the Pi editor at the current cursor position (without replacing existing text). You can review and edit before sending.
 
 ```json
 "action": "Explain {{selected}}"
@@ -165,7 +197,7 @@ Add `output` to route the command's stdout elsewhere:
 | Output | Behavior |
 |--------|----------|
 | `"notify"` | Show as notification (default) |
-| `"editor"` | Put stdout in the editor |
+| `"editor"` | Paste stdout into the editor at cursor |
 | `"send"` | Send stdout to the agent |
 
 ```json

@@ -25,6 +25,12 @@ interface FzfEntry {
   positions: Set<number>;
 }
 
+export interface SelectorRenderOptions {
+  sideBorders?: boolean;
+  showTopBorder?: boolean;
+  showBottomBorder?: boolean;
+}
+
 /**
  * Fuzzy selector component: Input + fzf-filtered scrollable list.
  *
@@ -50,6 +56,9 @@ export class FuzzySelector extends Container implements Focusable {
   private fzf: Fzf<string[]>;
   private previewTemplate?: string;
   private settings: FzfSettings;
+  private sideBorders: boolean;
+  private showTopBorder: boolean;
+  private showBottomBorder: boolean;
 
   public onSelect?: (item: string) => void;
   public onCancel?: () => void;
@@ -119,6 +128,7 @@ export class FuzzySelector extends Container implements Focusable {
     theme: SelectorTheme,
     previewTemplate?: string,
     settings?: FzfSettings,
+    options?: SelectorRenderOptions,
   ) {
     super();
     this.candidates = candidates;
@@ -127,6 +137,9 @@ export class FuzzySelector extends Container implements Focusable {
     this.selectorTheme = theme;
     this.previewTemplate = previewTemplate;
     this.settings = settings ?? DEFAULT_SETTINGS;
+    this.sideBorders = options?.sideBorders ?? true;
+    this.showTopBorder = options?.showTopBorder ?? true;
+    this.showBottomBorder = options?.showBottomBorder ?? true;
 
     // Initial unfiltered list
     this.filtered = candidates.map((item) => ({
@@ -267,14 +280,18 @@ export class FuzzySelector extends Container implements Focusable {
     const t = this.selectorTheme;
     const lines: string[] = [];
 
-    // Inner content width (minus 2 for side borders)
-    const innerWidth = Math.max(1, width - 2);
-    const side = t.border("│");
+    // Inner content width (minus 2 only when side borders are enabled)
+    const innerWidth = Math.max(1, width - (this.sideBorders ? 2 : 0));
+    const side = this.sideBorders ? t.border("│") : "";
 
-    // Top border with rounded corners
-    lines.push(
-      t.border("╭") + t.border("─".repeat(innerWidth)) + t.border("╮"),
-    );
+    // Top border
+    if (this.showTopBorder) {
+      lines.push(
+        this.sideBorders
+          ? t.border("╭") + t.border("─".repeat(innerWidth)) + t.border("╮")
+          : t.border("─".repeat(innerWidth)),
+      );
+    }
 
     // Title
     lines.push(boxLine(` ${t.accent(t.bold(this.title))}`, innerWidth, side));
@@ -287,7 +304,9 @@ export class FuzzySelector extends Container implements Focusable {
 
     // Separator
     lines.push(
-      t.border("├") + t.border("─".repeat(innerWidth)) + t.border("┤"),
+      this.sideBorders
+        ? t.border("├") + t.border("─".repeat(innerWidth)) + t.border("┤")
+        : t.border("─".repeat(innerWidth)),
     );
 
     // Two-pane layout when preview is configured
@@ -443,10 +462,14 @@ export class FuzzySelector extends Container implements Focusable {
       );
     }
 
-    // Bottom border with rounded corners
-    lines.push(
-      t.border("╰") + t.border("─".repeat(innerWidth)) + t.border("╯"),
-    );
+    // Bottom border
+    if (this.showBottomBorder) {
+      lines.push(
+        this.sideBorders
+          ? t.border("╰") + t.border("─".repeat(innerWidth)) + t.border("╯")
+          : t.border("─".repeat(innerWidth)),
+      );
+    }
 
     return lines;
   }

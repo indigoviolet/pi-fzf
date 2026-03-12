@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.7.0] - 2026-03-12
+
+### Added
+
+- Support three selector placements: `overlay`, `aboveEditor`, and `belowEditor`
+- Restore `overlay` as the default placement for backwards compatibility
+- Add placement tests for default resolution and explicit `overlay`
+
+### Changed
+
+- Render selector via floating overlay when placement is `overlay`
+- Render selector as editor widget for `aboveEditor`/`belowEditor`
+- In widget mode, remove side borders and hide the border touching the editor seam
+- Document placement behavior and defaults in README
+
 ## [0.5.0] - 2026-02-07
 
 ### Changed

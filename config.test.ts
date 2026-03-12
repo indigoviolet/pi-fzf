@@ -239,6 +239,96 @@ describe("loadFzfConfig", () => {
     expect(testCmd).toBeDefined();
     expect(testCmd?.preview).toBeUndefined();
   });
+
+  it("loads selector placement when specified", () => {
+    writeProjectConfig({
+      commands: {
+        test: {
+          list: "ls",
+          action: "Read {{selected}}",
+          placement: "belowEditor",
+        },
+      },
+    });
+
+    const result = loadFzfConfig(testDir);
+    const testCmd = result.find((c) => c.name === "test");
+
+    expect(testCmd).toBeDefined();
+    expect(testCmd?.placement).toBe("belowEditor");
+  });
+
+  it("defaults selector placement to overlay", () => {
+    writeProjectConfig({
+      commands: {
+        test: {
+          list: "ls",
+          action: "Read {{selected}}",
+        },
+      },
+    });
+
+    const result = loadFzfConfig(testDir);
+    const testCmd = result.find((c) => c.name === "test");
+
+    expect(testCmd).toBeDefined();
+    expect(testCmd?.placement).toBe("overlay");
+  });
+
+  it("supports explicit overlay placement", () => {
+    writeProjectConfig({
+      commands: {
+        test: {
+          list: "ls",
+          action: "Read {{selected}}",
+          placement: "overlay",
+        },
+      },
+    });
+
+    const result = loadFzfConfig(testDir);
+    const testCmd = result.find((c) => c.name === "test");
+
+    expect(testCmd).toBeDefined();
+    expect(testCmd?.placement).toBe("overlay");
+  });
+
+  it("uses top-level defaultPlacement when command placement is omitted", () => {
+    writeProjectConfig({
+      defaultPlacement: "belowEditor",
+      commands: {
+        test: {
+          list: "ls",
+          action: "Read {{selected}}",
+        },
+      },
+    });
+
+    const result = loadFzfConfig(testDir);
+    const testCmd = result.find((c) => c.name === "test");
+
+    expect(testCmd).toBeDefined();
+    expect(testCmd?.placement).toBe("belowEditor");
+  });
+
+  it("command placement overrides top-level defaultPlacement", () => {
+    writeProjectConfig({
+      defaultPlacement: "belowEditor",
+      commands: {
+        test: {
+          list: "ls",
+          action: "Read {{selected}}",
+          placement: "aboveEditor",
+        },
+      },
+    });
+
+    const result = loadFzfConfig(testDir);
+    const testCmd = result.find((c) => c.name === "test");
+
+    expect(testCmd).toBeDefined();
+    expect(testCmd?.placement).toBe("aboveEditor");
+  });
 });
 
 describe("loadFzfSettings", () => {

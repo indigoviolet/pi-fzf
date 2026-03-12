@@ -56,6 +56,41 @@ describe("FuzzySelector", () => {
       // The long item should be visible (not truncated by narrow pane)
       expect(listLine).toBeDefined();
     });
+
+    it("can render without side borders", () => {
+      const selector = new FuzzySelector(
+        ["item1", "item2"],
+        "fzf:test",
+        10,
+        mockTheme,
+        undefined,
+        undefined,
+        { sideBorders: false },
+      );
+
+      const lines = selector.render(80);
+      const hasSideBorders = lines.some(
+        (l) => l.startsWith("│") || l.endsWith("│"),
+      );
+
+      expect(hasSideBorders).toBe(false);
+    });
+
+    it("can hide top and bottom borders independently", () => {
+      const selector = new FuzzySelector(
+        ["item1", "item2"],
+        "fzf:test",
+        10,
+        mockTheme,
+        undefined,
+        undefined,
+        { sideBorders: false, showTopBorder: false, showBottomBorder: false },
+      );
+
+      const lines = selector.render(80);
+      expect(lines[0]).not.toMatch(/─/);
+      expect(lines[lines.length - 1]).not.toMatch(/─/);
+    });
   });
 
   describe("two-pane layout (with preview)", () => {

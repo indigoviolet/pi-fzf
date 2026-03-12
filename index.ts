@@ -71,17 +71,20 @@ async function runFzfSelector(
     return;
   }
 
-  // 2. Open the fuzzy selector overlay
-  // Capture tui reference so we can request a render after the overlay closes
+  // 2. Render selector as a widget in configured placement,
+  // and use custom() only for focused input routing.
   let tuiRef: TUI | undefined;
 
-  // Use larger overlay when preview is configured
-  const overlayOptions = cmd.preview
-    ? {
-        overlay: true,
-        overlayOptions: { width: "80%", minWidth: 120, maxHeight: "80%" },
-      }
-    : { overlay: true };
+  const customOptions =
+    cmd.placement === "overlay" && cmd.preview
+      ? {
+          overlay: true,
+          overlayOptions: { width: "80%", minWidth: 120, maxHeight: "80%" },
+        }
+      : {
+          // Keep editor visible while custom mode captures focused input.
+          overlay: true,
+        };
 
   const selected = await ctx.ui.custom<string | null>(
     (tui, theme, _kb, done) => {
@@ -96,22 +99,37 @@ async function runFzfSelector(
         bold: (t) => theme.bold(t),
       };
 
-      // Show more items when preview is configured (up to 80% of terminal via maxHeight)
-      // Use fixed height for preview mode to keep preview pane large
+      // Keep preview mode taller to leave room for right-pane content.
       const maxVisible = cmd.preview ? 35 : Math.min(candidates.length, 15);
+      const isWidgetPlacement = cmd.placement !== "overlay";
+
       const selector = new FuzzySelector(
         candidates,
         `fzf:${cmd.name}`,
         maxVisible,
         selectorTheme,
-        cmd.preview, // pass preview template
-        settings, // pass scroll settings
+        cmd.preview,
+        settings,
+        isWidgetPlacement
+          ? {
+              // Widget placements (above/below editor) look cleaner without side borders.
+              sideBorders: false,
+              // Blend widget into editor seam.
+              showTopBorder: cmd.placement !== "belowEditor",
+              showBottomBorder: cmd.placement !== "aboveEditor",
+            }
+          : {
+              // Overlay keeps the classic floating panel framing.
+              sideBorders: true,
+              showTopBorder: true,
+              showBottomBorder: true,
+            },
       );
 
       // Set up preview callback if preview is configured
       if (cmd.preview) {
         selector.onPreviewRequest = async (candidate) => {
-          const previewTemplate = cmd.preview; // capture in closure
+          const previewTemplate = cmd.preview;
           const result = await runPreviewCommand(
             pi.exec.bind(pi) as ExecFunction,
             previewTemplate,
@@ -119,20 +137,54 @@ async function runFzfSelector(
           );
           return result.lines;
         };
-        // Trigger initial preview load now that callback is set
         selector.triggerInitialPreview();
       }
 
       selector.onSelect = (item) => done(item);
       selector.onCancel = () => done(null);
 
+      if (cmd.placement === "overlay") {
+        return {
+          render(width: number) {
+            return selector.render(width);
+          },
+          invalidate() {
+            selector.invalidate();
+          },
+          handleInput(data: string) {
+            selector.handleInput(data);
+            tui.requestRender();
+          },
+          // Focusable — propagate to selector for IME cursor support
+          get focused() {
+            return selector.focused;
+          },
+          set focused(value: boolean) {
+            selector.focused = value;
+          },
+        };
+      }
+
+      const widgetKey = `pi-fzf:${cmd.name}:selector`;
+
+      ctx.ui.setWidget(
+        widgetKey,
+        () => ({
+          render(width: number) {
+            return selector.render(width);
+          },
+          invalidate() {
+            selector.invalidate();
+          },
+        }),
+        { placement: cmd.placement },
+      );
+
       return {
-        render(width: number) {
-          return selector.render(width);
+        render() {
+          return [];
         },
-        invalidate() {
-          selector.invalidate();
-        },
+        invalidate() {},
         handleInput(data: string) {
           selector.handleInput(data);
           tui.requestRender();
@@ -144,9 +196,12 @@ async function runFzfSelector(
         set focused(value: boolean) {
           selector.focused = value;
         },
+        dispose() {
+          ctx.ui.setWidget(widgetKey, undefined);
+        },
       };
     },
-    overlayOptions,
+    customOptions,
   );
 
   // 3. If user selected something, execute the action
