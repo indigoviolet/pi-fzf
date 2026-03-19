@@ -49,9 +49,16 @@ async function runFzfSelector(
   }
 
   // 1. Run the list command to get candidates
-  const result = await pi.exec("bash", ["-c", cmd.list], {
-    timeout: 10000,
-  });
+  let result: { code: number; stdout: string; stderr: string };
+  if (cmd.cache) {
+    const bktArgs = ["--ttl", cmd.cache.ttl];
+    if (cmd.cache.stale) bktArgs.push("--stale", cmd.cache.stale);
+    if (cmd.cache.cwd !== false) bktArgs.push("--cwd");
+    bktArgs.push("--", "bash", "-c", cmd.list);
+    result = await pi.exec("bkt", bktArgs, { timeout: 30000 });
+  } else {
+    result = await pi.exec("bash", ["-c", cmd.list], { timeout: 10000 });
+  }
 
   if (result.code !== 0) {
     ctx.ui.notify(
@@ -91,6 +98,7 @@ async function runFzfSelector(
             : {
                 anchor: "top-center",
                 offsetY: 5,
+                width: "80%",
               },
         }
       : {

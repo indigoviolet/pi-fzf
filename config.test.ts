@@ -2,6 +2,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { stringify as stringifyYaml } from "yaml";
 import {
   loadFzfConfig,
   loadFzfSettings,
@@ -117,7 +118,7 @@ describe("loadFzfConfig", () => {
   });
 
   function writeProjectConfig(config: object) {
-    writeFileSync(join(testDir, ".pi", "fzf.json"), JSON.stringify(config));
+    writeFileSync(join(testDir, ".pi", "fzf.yaml"), stringifyYaml(config));
   }
 
   it("loads commands from project config", () => {
@@ -160,8 +161,8 @@ describe("loadFzfConfig", () => {
     expect(names).toContain("bar");
   });
 
-  it("handles invalid JSON gracefully", () => {
-    writeFileSync(join(testDir, ".pi", "fzf.json"), "not valid json");
+  it("handles invalid YAML gracefully", () => {
+    writeFileSync(join(testDir, ".pi", "fzf.yaml"), "{{invalid yaml");
 
     // Should not throw, just skip invalid config
     const result = loadFzfConfig(testDir);
@@ -379,7 +380,7 @@ describe("loadFzfSettings", () => {
   });
 
   function writeProjectConfig(config: object) {
-    writeFileSync(join(testDir, ".pi", "fzf.json"), JSON.stringify(config));
+    writeFileSync(join(testDir, ".pi", "fzf.yaml"), stringifyYaml(config));
   }
 
   it("returns default settings when no config exists", () => {

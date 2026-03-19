@@ -476,7 +476,15 @@ export class FuzzySelector extends Container implements Focusable {
       );
     }
 
-    return lines;
+    // Safety: expand tabs (visibleWidth may miscount them) and
+    // ensure no rendered line exceeds the requested width.
+    return lines.map((line) => {
+      if (line.includes("\t")) line = line.replace(/\t/g, "    ");
+      if (visibleWidth(line) > width) {
+        return truncateToWidth(line, width, "");
+      }
+      return line;
+    });
   }
 
   override invalidate(): void {
@@ -509,9 +517,10 @@ function prettyKey(key: string): string {
  * Wrap a content line with side borders, padding to fill the box width.
  */
 function boxLine(content: string, innerWidth: number, side: string): string {
-  const contentWidth = visibleWidth(content);
+  const truncated = truncateToWidth(content, innerWidth, "");
+  const contentWidth = visibleWidth(truncated);
   const padding = Math.max(0, innerWidth - contentWidth);
-  return side + content + " ".repeat(padding) + side;
+  return side + truncated + " ".repeat(padding) + side;
 }
 
 /**

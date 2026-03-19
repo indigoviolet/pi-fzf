@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { parse as parseYaml } from "yaml";
 
 // --- Types ---
 
@@ -17,6 +18,15 @@ export interface FzfActionLong {
 /** Short form (string) defaults to editor type */
 export type FzfAction = string | FzfActionLong;
 
+export interface FzfCacheConfig {
+  /** bkt TTL duration (e.g. "5m", "10m") */
+  ttl: string;
+  /** Duration after which the result is refreshed in the background (e.g. "2m") */
+  stale?: string;
+  /** Include cwd in the cache key (default: true) */
+  cwd?: boolean;
+}
+
 export interface FzfCommandConfig {
   /** Bash command that outputs candidates, one per line */
   list: string;
@@ -30,6 +40,8 @@ export interface FzfCommandConfig {
   placement?: SelectorPlacement;
   /** Hide selector header/title line (defaults to false) */
   hideHeader?: boolean;
+  /** Cache list output via bkt */
+  cache?: FzfCacheConfig;
 }
 
 export interface FzfSettingsConfig {
@@ -69,6 +81,8 @@ export interface ResolvedCommand {
   placement: SelectorPlacement;
   /** Hide selector header/title line */
   hideHeader: boolean;
+  /** Cache list output via bkt */
+  cache?: FzfCacheConfig;
 }
 
 export interface FzfSettings {
@@ -92,7 +106,7 @@ function loadConfigFile(path: string): FzfConfig | null {
   if (!existsSync(path)) return null;
   try {
     const content = readFileSync(path, "utf-8");
-    const parsed = JSON.parse(content);
+    const parsed = parseYaml(content);
     if (parsed && typeof parsed === "object" && parsed.commands) {
       return parsed as FzfConfig;
     }
@@ -122,8 +136,8 @@ export function resolveAction(action: FzfAction): ResolvedAction {
  * Project-local commands override global commands with the same name.
  */
 export function loadFzfConfig(cwd: string): ResolvedCommand[] {
-  const globalPath = join(homedir(), ".pi", "agent", "fzf.json");
-  const projectPath = join(cwd, ".pi", "fzf.json");
+  const globalPath = join(homedir(), ".pi", "agent", "fzf.yaml");
+  const projectPath = join(cwd, ".pi", "fzf.yaml");
 
   const globalConfig = loadConfigFile(globalPath);
   const projectConfig = loadConfigFile(projectPath);
@@ -148,6 +162,7 @@ export function loadFzfConfig(cwd: string): ResolvedCommand[] {
     preview: cmd.preview,
     placement: cmd.placement ?? defaultPlacement,
     hideHeader: cmd.hideHeader ?? false,
+    cache: cmd.cache,
   }));
 }
 
@@ -156,8 +171,8 @@ export function loadFzfConfig(cwd: string): ResolvedCommand[] {
  * Project-local settings override global settings.
  */
 export function loadFzfSettings(cwd: string): FzfSettings {
-  const globalPath = join(homedir(), ".pi", "agent", "fzf.json");
-  const projectPath = join(cwd, ".pi", "fzf.json");
+  const globalPath = join(homedir(), ".pi", "agent", "fzf.yaml");
+  const projectPath = join(cwd, ".pi", "fzf.yaml");
 
   const globalConfig = loadConfigFile(globalPath);
   const projectConfig = loadConfigFile(projectPath);
