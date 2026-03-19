@@ -51,6 +51,8 @@ export interface FzfSettingsConfig {
   previewScrollDown?: string;
   /** Number of lines to scroll at a time (default: 5) */
   previewScrollLines?: number;
+  /** Optional shortcut that opens a picker of commands without explicit shortcuts */
+  unboundCommandsShortcut?: string;
 }
 
 export interface FzfConfig {
@@ -92,12 +94,15 @@ export interface FzfSettings {
   previewScrollDown: string;
   /** Number of lines to scroll at a time */
   previewScrollLines: number;
+  /** Optional shortcut that opens a picker of commands without explicit shortcuts */
+  unboundCommandsShortcut?: string;
 }
 
 const DEFAULT_SETTINGS: FzfSettings = {
   previewScrollUp: "shift+up",
   previewScrollDown: "shift+down",
   previewScrollLines: 5,
+  unboundCommandsShortcut: "ctrl+/",
 };
 
 // --- Config loading ---
@@ -194,6 +199,10 @@ export function loadFzfSettings(cwd: string): FzfSettings {
       projectSettings.previewScrollLines ??
       globalSettings.previewScrollLines ??
       DEFAULT_SETTINGS.previewScrollLines,
+    unboundCommandsShortcut:
+      projectSettings.unboundCommandsShortcut ??
+      globalSettings.unboundCommandsShortcut ??
+      DEFAULT_SETTINGS.unboundCommandsShortcut,
   };
 }
 

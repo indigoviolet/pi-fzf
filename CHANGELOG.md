@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Default `ctrl+/` fallback shortcut opens a picker of configured fzf commands that do not have their own shortcuts
+
+
 ## [0.8.0] - 2026-03-13
 
 ### Added

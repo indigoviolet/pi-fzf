@@ -108,6 +108,19 @@ describe("FuzzySelector", () => {
 
       expect(hasTitle).toBe(false);
     });
+
+    it("does not show a selected item footer without preview", () => {
+      const selector = new FuzzySelector(
+        ["src/components/very/deep/path/with-a-very-long-file-name.tsx"],
+        "fzf:test",
+        10,
+        mockTheme,
+        undefined,
+      );
+
+      const lines = selector.render(50);
+      expect(lines.some((l) => l.includes("Selected:"))).toBe(false);
+    });
   });
 
   describe("two-pane layout (with preview)", () => {
@@ -224,6 +237,44 @@ describe("FuzzySelector", () => {
       selector.setPreviewContent(["content here"]);
       lines = selector.render(80);
       expect(lines.some((l) => l.includes("content here"))).toBe(true);
+    });
+
+    it("shows the full selected item in a wrapped footer section", () => {
+      const selector = new FuzzySelector(
+        ["src/components/very/deep/path/with-a-very-long-file-name.tsx"],
+        "fzf:test",
+        10,
+        mockTheme,
+        "cat {{selected}}",
+      );
+
+      const lines = selector.render(50);
+
+      expect(lines.some((l) => l.includes("Selected:"))).toBe(true);
+      expect(
+        lines.some((l) => l.includes("src/components/very/deep/path")),
+      ).toBe(true);
+      expect(lines.some((l) => l.includes("file-name.tsx"))).toBe(true);
+    });
+
+    it("updates the selected item footer when selection changes", () => {
+      const selector = new FuzzySelector(
+        ["first/very-long-entry.ts", "second/even-longer-entry.ts"],
+        "fzf:test",
+        10,
+        mockTheme,
+        "cat {{selected}}",
+      );
+
+      selector.handleInput("[B"); // down
+      const lines = selector.render(60);
+
+      expect(
+        lines.some((l) => l.includes("Selected: second/even-longer-entry.ts")),
+      ).toBe(true);
+      expect(
+        lines.some((l) => l.includes("Selected: first/very-long-entry.ts")),
+      ).toBe(false);
     });
   });
 

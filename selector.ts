@@ -46,6 +46,8 @@ const DEFAULT_SETTINGS: FzfSettings = {
   previewScrollLines: 5,
 };
 
+const SELECTED_ITEM_DETAIL_MAX_LINES = 3;
+
 export class FuzzySelector extends Container implements Focusable {
   private input: Input;
   private candidates: string[];
@@ -397,6 +399,30 @@ export class FuzzySelector extends Container implements Focusable {
         lines.push(boxLine(t.dim(info), innerWidth, side));
       }
 
+      const selectedEntry = this.filtered[this.selectedIndex];
+      const detailLines = selectedEntry
+        ? formatSelectedItemDetailLines(
+            selectedEntry.item,
+            innerWidth,
+            SELECTED_ITEM_DETAIL_MAX_LINES,
+          ).map((line, index) =>
+            index === 0
+              ? `${t.dim(" Selected: ")}${line}`
+              : `           ${line}`,
+          )
+        : [];
+
+      if (detailLines.length > 0) {
+        lines.push(
+          this.sideBorders
+            ? t.border("├") + t.border("─".repeat(innerWidth)) + t.border("┤")
+            : t.border("─".repeat(innerWidth)),
+        );
+        for (const detailLine of detailLines) {
+          lines.push(boxLine(detailLine, innerWidth, side));
+        }
+      }
+
       // Help line
       const upKey = prettyKey(editorKey("selectUp"));
       const downKey = prettyKey(editorKey("selectDown"));
@@ -521,6 +547,43 @@ function boxLine(content: string, innerWidth: number, side: string): string {
   const contentWidth = visibleWidth(truncated);
   const padding = Math.max(0, innerWidth - contentWidth);
   return side + truncated + " ".repeat(padding) + side;
+}
+
+function formatSelectedItemDetailLines(
+  text: string,
+  innerWidth: number,
+  maxLines: number,
+): string[] {
+  const firstPrefixWidth = visibleWidth(" Selected: ");
+  const continuationPrefixWidth = visibleWidth("           ");
+  const lines: string[] = [];
+  let remaining = text;
+
+  for (let i = 0; i < maxLines && remaining.length > 0; i++) {
+    const prefixWidth = i === 0 ? firstPrefixWidth : continuationPrefixWidth;
+    const availableWidth = Math.max(1, innerWidth - prefixWidth);
+    const line = truncateToWidth(remaining, availableWidth, "");
+    if (!line) break;
+
+    lines.push(line);
+    remaining = remaining.slice(line.length);
+  }
+
+  if (remaining.length > 0 && lines.length > 0) {
+    const lastIndex = lines.length - 1;
+    const prefixWidth =
+      lastIndex === 0 ? firstPrefixWidth : continuationPrefixWidth;
+    const availableWidth = Math.max(1, innerWidth - prefixWidth);
+    lines[lastIndex] = appendEllipsis(lines[lastIndex] ?? "", availableWidth);
+  }
+
+  return lines;
+}
+
+function appendEllipsis(text: string, maxWidth: number): string {
+  if (maxWidth <= 1) return "…";
+  if (visibleWidth(text) < maxWidth) return `${text}…`;
+  return `${truncateToWidth(text, maxWidth - 1, "")}…`;
 }
 
 /**

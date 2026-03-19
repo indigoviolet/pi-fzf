@@ -1,6 +1,7 @@
 import type {
   ExtensionAPI,
   ExtensionCommandContext,
+  ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
 import type { TUI } from "@mariozechner/pi-tui";
 import { executeAction } from "./actions.js";
@@ -9,6 +10,10 @@ import { loadFzfConfig, loadFzfSettings } from "./config.js";
 import { type ExecFunction, runPreviewCommand } from "./preview.js";
 import type { SelectorTheme } from "./selector.js";
 import { FuzzySelector } from "./selector.js";
+import {
+  buildShortcutMenuEntries,
+  findCommandByShortcut,
+} from "./shortcut-menu.js";
 
 export default function (pi: ExtensionAPI) {
   let commands: ResolvedCommand[] = [];
@@ -30,7 +35,137 @@ export default function (pi: ExtensionAPI) {
       }
     }
 
+    registerUnboundCommandsShortcut(pi, commands, settings, ctx);
+
     ctx.ui.notify(`fzf: ${commands.length} command(s) loaded`, "info");
+  });
+}
+
+function createSelectorTheme(
+  theme: ExtensionContext["ui"]["theme"],
+): SelectorTheme {
+  return {
+    accent: (t) => theme.fg("accent", t),
+    muted: (t) => theme.fg("muted", t),
+    dim: (t) => theme.fg("dim", t),
+    match: (t) => theme.fg("warning", theme.bold(t)),
+    border: (t) => theme.fg("border", t),
+    bold: (t) => theme.bold(t),
+  };
+}
+
+async function showShortcutMenu(
+  ctx: ExtensionCommandContext,
+  candidates: string[],
+  settings: FzfSettings,
+): Promise<string | null> {
+  return ctx.ui.custom<string | null>(
+    (tui, theme, _kb, done) => {
+      const selector = new FuzzySelector(
+        candidates,
+        "fzf:commands",
+        Math.min(candidates.length, 15),
+        createSelectorTheme(theme),
+        undefined,
+        settings,
+        {
+          sideBorders: true,
+          showTopBorder: true,
+          showBottomBorder: true,
+          showTitle: true,
+        },
+      );
+
+      selector.onSelect = (item) => done(item);
+      selector.onCancel = () => done(null);
+
+      return {
+        render(width: number) {
+          return selector.render(width);
+        },
+        invalidate() {
+          selector.invalidate();
+        },
+        handleInput(data: string) {
+          selector.handleInput(data);
+          tui.requestRender();
+        },
+        get focused() {
+          return selector.focused;
+        },
+        set focused(value: boolean) {
+          selector.focused = value;
+        },
+      };
+    },
+    {
+      overlay: true,
+      overlayOptions: {
+        anchor: "top-center",
+        offsetY: 5,
+        width: "80%",
+      },
+    },
+  );
+}
+
+async function runUnboundCommandsShortcut(
+  pi: ExtensionAPI,
+  commands: ResolvedCommand[],
+  ctx: ExtensionCommandContext,
+  settings: FzfSettings,
+): Promise<void> {
+  if (!ctx.hasUI) {
+    ctx.ui.notify("fzf commands require interactive mode", "error");
+    return;
+  }
+
+  const entries = buildShortcutMenuEntries(commands);
+  if (entries.length === 0) {
+    ctx.ui.notify("fzf: no unbound commands", "warning");
+    return;
+  }
+
+  const selectedLabel = await showShortcutMenu(
+    ctx,
+    entries.map((entry) => entry.label),
+    settings,
+  );
+
+  if (selectedLabel === null) return;
+
+  const selectedEntry = entries.find((entry) => entry.label === selectedLabel);
+  if (!selectedEntry) {
+    ctx.ui.notify(`fzf: unknown command selection: ${selectedLabel}`, "error");
+    return;
+  }
+
+  await runFzfSelector(pi, selectedEntry.command, ctx, settings);
+}
+
+function registerUnboundCommandsShortcut(
+  pi: ExtensionAPI,
+  commands: ResolvedCommand[],
+  settings: FzfSettings,
+  ctx: ExtensionContext,
+): void {
+  const shortcut = settings.unboundCommandsShortcut;
+  if (!shortcut) return;
+
+  const conflictingCommand = findCommandByShortcut(commands, shortcut);
+  if (conflictingCommand) {
+    ctx.ui.notify(
+      `fzf: unbound command shortcut ${shortcut} conflicts with fzf:${conflictingCommand.name}`,
+      "warning",
+    );
+    return;
+  }
+
+  pi.registerShortcut(shortcut, {
+    description: "fzf:commands",
+    handler: async (commandCtx) => {
+      await runUnboundCommandsShortcut(pi, commands, commandCtx, settings);
+    },
   });
 }
 
@@ -110,27 +245,14 @@ async function runFzfSelector(
     (tui, theme, _kb, done) => {
       tuiRef = tui;
 
-      const selectorTheme: SelectorTheme = {
-        accent: (t) => theme.fg("accent", t),
-        muted: (t) => theme.fg("muted", t),
-        dim: (t) => theme.fg("dim", t),
-        match: (t) => theme.fg("warning", theme.bold(t)),
-        border: (t) => theme.fg("border", t),
-        bold: (t) => theme.bold(t),
-      };
-
-      // Keep preview mode taller to leave room for right-pane content.
-      const maxVisible = cmd.preview ? 35 : Math.min(candidates.length, 15);
-      const isWidgetPlacement = cmd.placement !== "overlay";
-
       const selector = new FuzzySelector(
         candidates,
         `fzf:${cmd.name}`,
-        maxVisible,
-        selectorTheme,
+        cmd.preview ? 35 : Math.min(candidates.length, 15),
+        createSelectorTheme(theme),
         cmd.preview,
         settings,
-        isWidgetPlacement
+        cmd.placement !== "overlay"
           ? {
               // Widget placements (above/below editor) look cleaner without side borders.
               sideBorders: false,
@@ -150,8 +272,8 @@ async function runFzfSelector(
 
       // Set up preview callback if preview is configured
       if (cmd.preview) {
+        const previewTemplate = cmd.preview;
         selector.onPreviewRequest = async (candidate) => {
-          const previewTemplate = cmd.preview;
           const result = await runPreviewCommand(
             pi.exec.bind(pi) as ExecFunction,
             previewTemplate,

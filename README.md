@@ -48,6 +48,29 @@ commands:
 
 The shortcut format follows Pi's [keybinding syntax](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/keybindings.md#key-format): `modifier+key` where modifiers are `ctrl`, `shift`, `alt` (combinable).
 
+#### Fallback shortcut for unbound commands
+
+By default, `ctrl+/` opens a picker of commands that do **not** have their own `shortcut`. You can override it with `settings.unboundCommandsShortcut`:
+
+```yaml
+settings:
+  unboundCommandsShortcut: ctrl+/
+
+commands:
+  file:
+    list: fd --type f --max-depth 4
+    action: "@{{selected}}"
+    shortcut: "@"
+
+  sym:
+    list: ctags -R --languages=TypeScript -f - .
+    action: "{{selected}}"
+```
+
+Pressing `ctrl+/` opens a first-stage picker labeled as `name — summary`. Choosing one of those commands launches its normal selector, and any `editor` action still inserts the final selection at the current cursor position.
+
+If the fallback shortcut conflicts with a command's explicit `shortcut`, pi-fzf skips registering the fallback shortcut and shows a warning.
+
 ### Caching
 
 Add a `cache` field to cache the `list` output via [bkt](https://github.com/dimo414/bkt). The command runs once, and subsequent invocations serve the cached result instantly. Use `stale` to refresh in the background after a duration while still serving the cached result immediately.
