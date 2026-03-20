@@ -1,8 +1,7 @@
-import { editorKey } from "@mariozechner/pi-coding-agent";
 import type { Focusable, KeyId } from "@mariozechner/pi-tui";
 import {
   Container,
-  getEditorKeybindings,
+  getKeybindings,
   Input,
   matchesKey,
   truncateToWidth,
@@ -163,10 +162,10 @@ export class FuzzySelector extends Container implements Focusable {
   }
 
   handleInput(data: string): void {
-    const kb = getEditorKeybindings();
+    const kb = getKeybindings();
 
-    // Navigation: up/down (uses selectUp/selectDown keybindings)
-    if (kb.matches(data, "selectUp")) {
+    // Navigation: up/down (uses tui.select.up/down keybindings)
+    if (kb.matches(data, "tui.select.up")) {
       if (this.filtered.length > 0) {
         this.selectedIndex =
           this.selectedIndex === 0
@@ -178,7 +177,7 @@ export class FuzzySelector extends Container implements Focusable {
       return;
     }
 
-    if (kb.matches(data, "selectDown")) {
+    if (kb.matches(data, "tui.select.down")) {
       if (this.filtered.length > 0) {
         this.selectedIndex =
           this.selectedIndex === this.filtered.length - 1
@@ -190,7 +189,7 @@ export class FuzzySelector extends Container implements Focusable {
       return;
     }
 
-    if (kb.matches(data, "selectPageUp")) {
+    if (kb.matches(data, "tui.select.pageUp")) {
       if (this.filtered.length > 0) {
         this.selectedIndex = Math.max(0, this.selectedIndex - this.maxVisible);
       }
@@ -199,7 +198,7 @@ export class FuzzySelector extends Container implements Focusable {
       return;
     }
 
-    if (kb.matches(data, "selectPageDown")) {
+    if (kb.matches(data, "tui.select.pageDown")) {
       if (this.filtered.length > 0) {
         this.selectedIndex = Math.min(
           this.filtered.length - 1,
@@ -233,8 +232,8 @@ export class FuzzySelector extends Container implements Focusable {
       }
     }
 
-    // Select (uses selectConfirm keybinding)
-    if (kb.matches(data, "selectConfirm")) {
+    // Select (uses tui.select.confirm keybinding)
+    if (kb.matches(data, "tui.select.confirm")) {
       const entry = this.filtered[this.selectedIndex];
       if (entry) {
         this.onSelect?.(entry.item);
@@ -242,8 +241,8 @@ export class FuzzySelector extends Container implements Focusable {
       return;
     }
 
-    // Cancel (uses selectCancel keybinding)
-    if (kb.matches(data, "selectCancel")) {
+    // Cancel (uses tui.select.cancel keybinding)
+    if (kb.matches(data, "tui.select.cancel")) {
       this.onCancel?.();
       return;
     }
@@ -424,10 +423,10 @@ export class FuzzySelector extends Container implements Focusable {
       }
 
       // Help line
-      const upKey = prettyKey(editorKey("selectUp"));
-      const downKey = prettyKey(editorKey("selectDown"));
-      const confirmKey = prettyKey(editorKey("selectConfirm"));
-      const cancelKey = prettyKey(editorKey("selectCancel"));
+      const upKey = prettyKey(keybindingText("tui.select.up"));
+      const downKey = prettyKey(keybindingText("tui.select.down"));
+      const confirmKey = prettyKey(keybindingText("tui.select.confirm"));
+      const cancelKey = prettyKey(keybindingText("tui.select.cancel"));
       const helpText = this.previewTemplate
         ? ` ${upKey} ${downKey} nav • ${confirmKey} select • ${cancelKey} cancel • shift+↑↓ scroll preview`
         : ` ${upKey} ${downKey} navigate • ${confirmKey} select • ${cancelKey} cancel`;
@@ -478,10 +477,10 @@ export class FuzzySelector extends Container implements Focusable {
       }
 
       // Help line
-      const upKey = prettyKey(editorKey("selectUp"));
-      const downKey = prettyKey(editorKey("selectDown"));
-      const confirmKey = prettyKey(editorKey("selectConfirm"));
-      const cancelKey = prettyKey(editorKey("selectCancel"));
+      const upKey = prettyKey(keybindingText("tui.select.up"));
+      const downKey = prettyKey(keybindingText("tui.select.down"));
+      const confirmKey = prettyKey(keybindingText("tui.select.confirm"));
+      const cancelKey = prettyKey(keybindingText("tui.select.cancel"));
       lines.push(
         boxLine(
           t.dim(
@@ -537,6 +536,12 @@ function prettyKey(key: string): string {
     .split("/")
     .map((k) => PRETTY_KEYS[k] ?? k)
     .join("/");
+}
+
+function keybindingText(keybinding: string): string {
+  const keys = getKeybindings().getKeys(keybinding as never);
+  if (keys.length === 0) return "";
+  return keys.join("/");
 }
 
 /**

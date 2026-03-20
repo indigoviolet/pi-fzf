@@ -1,4 +1,35 @@
 import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@mariozechner/pi-tui", async () => {
+  const actual = await vi.importActual<typeof import("@mariozechner/pi-tui")>(
+    "@mariozechner/pi-tui",
+  );
+
+  const keybindings = {
+    "tui.select.up": ["up"],
+    "tui.select.down": ["down"],
+    "tui.select.pageUp": ["pageUp"],
+    "tui.select.pageDown": ["pageDown"],
+    "tui.select.confirm": ["enter"],
+    "tui.select.cancel": ["escape", "ctrl+c"],
+  };
+
+  const keybindingManager = {
+    matches(data: string, keybinding: keyof typeof keybindings) {
+      const keys = keybindings[keybinding] || [];
+      return keys.some((key) => actual.matchesKey(data, key));
+    },
+    getKeys(keybinding: keyof typeof keybindings) {
+      return [...(keybindings[keybinding] || [])];
+    },
+  };
+
+  return {
+    ...actual,
+    getKeybindings: () => keybindingManager,
+  };
+});
+
 import type { FzfSettings } from "./config.js";
 import { FuzzySelector, type SelectorTheme } from "./selector.js";
 
@@ -577,6 +608,58 @@ describe("FuzzySelector", () => {
       // Should reload for banana
       expect(onPreviewRequest).toHaveBeenCalledTimes(2);
       expect(onPreviewRequest).toHaveBeenLastCalledWith("banana");
+    });
+  });
+
+  describe("selection keybindings", () => {
+    it("selects the current item on enter", () => {
+      const selector = new FuzzySelector(
+        ["item1", "item2"],
+        "fzf:test",
+        10,
+        mockTheme,
+        undefined,
+      );
+      const onSelect = vi.fn();
+      selector.onSelect = onSelect;
+
+      selector.handleInput("\n");
+
+      expect(onSelect).toHaveBeenCalledWith("item1");
+    });
+
+    it("cancels on escape", () => {
+      const selector = new FuzzySelector(
+        ["item1", "item2"],
+        "fzf:test",
+        10,
+        mockTheme,
+        undefined,
+      );
+      const onCancel = vi.fn();
+      selector.onCancel = onCancel;
+
+      selector.handleInput("\x1b");
+
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+
+    it("renders help text from current Pi keybinding ids", () => {
+      const selector = new FuzzySelector(
+        ["item1"],
+        "fzf:test",
+        10,
+        mockTheme,
+        undefined,
+      );
+
+      const lines = selector.render(80);
+      const helpLine = lines[lines.length - 2];
+
+      expect(helpLine).toContain("↑");
+      expect(helpLine).toContain("↓");
+      expect(helpLine).toContain("⏎");
+      expect(helpLine).toContain("esc");
     });
   });
 
