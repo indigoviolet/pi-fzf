@@ -390,6 +390,7 @@ describe("loadFzfSettings", () => {
     expect(settings.previewScrollDown).toBe("shift+down");
     expect(settings.previewScrollLines).toBe(5);
     expect(settings.unboundCommandsShortcut).toBe("ctrl+/");
+    expect(settings.unboundCommandsPlacement).toBe("belowEditor");
   });
 
   it("loads custom keybindings from settings", () => {
@@ -433,6 +434,19 @@ describe("loadFzfSettings", () => {
     expect(settings.unboundCommandsShortcut).toBe("ctrl+/");
   });
 
+  it("loads unbound command placement from settings", () => {
+    writeProjectConfig({
+      commands: {},
+      settings: {
+        unboundCommandsPlacement: "aboveEditor",
+      },
+    });
+
+    const settings = loadFzfSettings(testDir);
+
+    expect(settings.unboundCommandsPlacement).toBe("aboveEditor");
+  });
+
   it("uses defaults for missing settings values", () => {
     writeProjectConfig({
       commands: {},
@@ -461,5 +475,6 @@ describe("loadFzfSettings", () => {
     expect(settings.previewScrollDown).toBe("shift+down");
     expect(settings.previewScrollLines).toBe(5);
     expect(settings.unboundCommandsShortcut).toBe("ctrl+/");
+    expect(settings.unboundCommandsPlacement).toBe("belowEditor");
   });
 });

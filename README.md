@@ -50,11 +50,12 @@ The shortcut format follows Pi's [keybinding syntax](https://github.com/badlogic
 
 #### Fallback shortcut for unbound commands
 
-By default, `ctrl+/` opens a picker of commands that do **not** have their own `shortcut`. You can override it with `settings.unboundCommandsShortcut`:
+By default, `ctrl+/` opens a picker of commands that do **not** have their own `shortcut`, rendered `belowEditor`. You can override its shortcut with `settings.unboundCommandsShortcut` and its placement with `settings.unboundCommandsPlacement`:
 
 ```yaml
 settings:
   unboundCommandsShortcut: ctrl+/
+  unboundCommandsPlacement: belowEditor
 
 commands:
   file:
@@ -67,7 +68,7 @@ commands:
     action: "{{selected}}"
 ```
 
-Pressing `ctrl+/` opens a first-stage picker labeled as `name — summary`. Choosing one of those commands launches its normal selector, and any `editor` action still inserts the final selection at the current cursor position.
+Pressing `ctrl+/` opens a first-stage picker labeled as `name — summary`. The unbound-command picker supports `overlay`, `aboveEditor`, and `belowEditor`, and defaults to `belowEditor`. Choosing one of those commands launches its normal selector, and any `editor` action still inserts the final selection at the current cursor position.
 
 If the fallback shortcut conflicts with a command's explicit `shortcut`, pi-fzf skips registering the fallback shortcut and shows a warning.
 

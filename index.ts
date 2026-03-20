@@ -59,6 +59,9 @@ async function showShortcutMenu(
   candidates: string[],
   settings: FzfSettings,
 ): Promise<string | null> {
+  const placement = settings.unboundCommandsPlacement;
+  const isWidgetPlacement = placement !== "overlay";
+
   return ctx.ui.custom<string | null>(
     (tui, theme, _kb, done) => {
       const selector = new FuzzySelector(
@@ -68,24 +71,64 @@ async function showShortcutMenu(
         createSelectorTheme(theme),
         undefined,
         settings,
-        {
-          sideBorders: true,
-          showTopBorder: true,
-          showBottomBorder: true,
-          showTitle: true,
-        },
+        isWidgetPlacement
+          ? {
+              sideBorders: false,
+              showTopBorder: placement !== "belowEditor",
+              showBottomBorder: placement !== "aboveEditor",
+              showTitle: true,
+            }
+          : {
+              sideBorders: true,
+              showTopBorder: true,
+              showBottomBorder: true,
+              showTitle: true,
+            },
       );
 
       selector.onSelect = (item) => done(item);
       selector.onCancel = () => done(null);
 
+      if (placement === "overlay") {
+        return {
+          render(width: number) {
+            return selector.render(width);
+          },
+          invalidate() {
+            selector.invalidate();
+          },
+          handleInput(data: string) {
+            selector.handleInput(data);
+            tui.requestRender();
+          },
+          get focused() {
+            return selector.focused;
+          },
+          set focused(value: boolean) {
+            selector.focused = value;
+          },
+        };
+      }
+
+      const widgetKey = "pi-fzf:commands:selector";
+      ctx.ui.setWidget(
+        widgetKey,
+        () => ({
+          render(width: number) {
+            return selector.render(width);
+          },
+          invalidate() {
+            selector.invalidate();
+          },
+        }),
+        { placement },
+      );
+
       return {
-        render(width: number) {
-          return selector.render(width);
+        render() {
+          return [];
         },
-        invalidate() {
-          selector.invalidate();
-        },
+        invalidate() {},
         handleInput(data: string) {
           selector.handleInput(data);
           tui.requestRender();
@@ -96,16 +139,23 @@ async function showShortcutMenu(
         set focused(value: boolean) {
           selector.focused = value;
         },
+        dispose() {
+          ctx.ui.setWidget(widgetKey, undefined);
+        },
       };
     },
-    {
-      overlay: true,
-      overlayOptions: {
-        anchor: "top-center",
-        offsetY: 5,
-        width: "80%",
-      },
-    },
+    placement === "overlay"
+      ? {
+          overlay: true,
+          overlayOptions: {
+            anchor: "top-center",
+            offsetY: 5,
+            width: "80%",
+          },
+        }
+      : {
+          overlay: true,
+        },
   );
 }
 

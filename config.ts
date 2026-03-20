@@ -53,6 +53,8 @@ export interface FzfSettingsConfig {
   previewScrollLines?: number;
   /** Optional shortcut that opens a picker of commands without explicit shortcuts */
   unboundCommandsShortcut?: string;
+  /** Placement for the unbound-commands picker (default: "belowEditor") */
+  unboundCommandsPlacement?: SelectorPlacement;
 }
 
 export interface FzfConfig {
@@ -96,6 +98,8 @@ export interface FzfSettings {
   previewScrollLines: number;
   /** Optional shortcut that opens a picker of commands without explicit shortcuts */
   unboundCommandsShortcut?: string;
+  /** Placement for the unbound-commands picker */
+  unboundCommandsPlacement: SelectorPlacement;
 }
 
 const DEFAULT_SETTINGS: FzfSettings = {
@@ -103,6 +107,7 @@ const DEFAULT_SETTINGS: FzfSettings = {
   previewScrollDown: "shift+down",
   previewScrollLines: 5,
   unboundCommandsShortcut: "ctrl+/",
+  unboundCommandsPlacement: "belowEditor",
 };
 
 // --- Config loading ---
@@ -203,6 +208,10 @@ export function loadFzfSettings(cwd: string): FzfSettings {
       projectSettings.unboundCommandsShortcut ??
       globalSettings.unboundCommandsShortcut ??
       DEFAULT_SETTINGS.unboundCommandsShortcut,
+    unboundCommandsPlacement:
+      projectSettings.unboundCommandsPlacement ??
+      globalSettings.unboundCommandsPlacement ??
+      DEFAULT_SETTINGS.unboundCommandsPlacement,
   };
 }
 
