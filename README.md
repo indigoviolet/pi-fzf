@@ -129,6 +129,7 @@ commands:
 When `preview` is configured, the selector splits into two panes:
 - **Left pane**: Candidate list (35% width)
 - **Right pane**: Preview output (65% width)
+- **Bottom detail section**: A wrapped `Selected:` footer showing the full currently highlighted item when the left list column is truncated
 
 **Keyboard shortcuts for preview:**
 - `Shift+↑` / `Shift+↓` — Scroll preview content (default, configurable)
