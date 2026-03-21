@@ -393,6 +393,8 @@ describe("FuzzySelector", () => {
         previewScrollUp: "shift+up",
         previewScrollDown: "shift+down",
         previewScrollLines: 3, // scroll 3 lines at a time
+        secondaryActionKey: "alt+enter",
+        unboundCommandsPlacement: "belowEditor",
       };
       const selector = new FuzzySelector(
         ["item1"],
@@ -436,6 +438,8 @@ describe("FuzzySelector", () => {
         previewScrollUp: "alt+k",
         previewScrollDown: "alt+j",
         previewScrollLines: 1,
+        secondaryActionKey: "alt+enter",
+        unboundCommandsPlacement: "belowEditor",
       };
       const selector = new FuzzySelector(
         ["item1"],

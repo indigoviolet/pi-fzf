@@ -43,6 +43,8 @@ const DEFAULT_SETTINGS: FzfSettings = {
   previewScrollUp: "shift+up",
   previewScrollDown: "shift+down",
   previewScrollLines: 5,
+  secondaryActionKey: "alt+enter",
+  unboundCommandsPlacement: "belowEditor",
 };
 
 const SELECTED_ITEM_DETAIL_MAX_LINES = 3;
@@ -64,6 +66,7 @@ export class FuzzySelector extends Container implements Focusable {
   private showTitle: boolean;
 
   public onSelect?: (item: string) => void;
+  public onSecondaryAction?: (item: string) => void;
   public onCancel?: () => void;
 
   // --- Preview state ---
@@ -237,6 +240,18 @@ export class FuzzySelector extends Container implements Focusable {
       const entry = this.filtered[this.selectedIndex];
       if (entry) {
         this.onSelect?.(entry.item);
+      }
+      return;
+    }
+
+    // Secondary action (configurable key, default alt+enter)
+    if (
+      this.onSecondaryAction &&
+      matchesKey(data, this.settings.secondaryActionKey as KeyId)
+    ) {
+      const entry = this.filtered[this.selectedIndex];
+      if (entry) {
+        this.onSecondaryAction(entry.item);
       }
       return;
     }
@@ -427,9 +442,12 @@ export class FuzzySelector extends Container implements Focusable {
       const downKey = prettyKey(keybindingText("tui.select.down"));
       const confirmKey = prettyKey(keybindingText("tui.select.confirm"));
       const cancelKey = prettyKey(keybindingText("tui.select.cancel"));
+      const secondaryHint = this.onSecondaryAction
+        ? ` • ${prettyKey(this.settings.secondaryActionKey)} action`
+        : "";
       const helpText = this.previewTemplate
-        ? ` ${upKey} ${downKey} nav • ${confirmKey} select • ${cancelKey} cancel • shift+↑↓ scroll preview`
-        : ` ${upKey} ${downKey} navigate • ${confirmKey} select • ${cancelKey} cancel`;
+        ? ` ${upKey} ${downKey} nav • ${confirmKey} select${secondaryHint} • ${cancelKey} cancel • shift+↑↓ scroll preview`
+        : ` ${upKey} ${downKey} navigate • ${confirmKey} select${secondaryHint} • ${cancelKey} cancel`;
       lines.push(boxLine(t.dim(helpText), innerWidth, side));
     } else {
       // Single pane layout (no preview)
@@ -481,10 +499,13 @@ export class FuzzySelector extends Container implements Focusable {
       const downKey = prettyKey(keybindingText("tui.select.down"));
       const confirmKey = prettyKey(keybindingText("tui.select.confirm"));
       const cancelKey = prettyKey(keybindingText("tui.select.cancel"));
+      const secondaryHint = this.onSecondaryAction
+        ? ` • ${prettyKey(this.settings.secondaryActionKey)} action`
+        : "";
       lines.push(
         boxLine(
           t.dim(
-            ` ${upKey} ${downKey} navigate • ${confirmKey} select • ${cancelKey} cancel`,
+            ` ${upKey} ${downKey} navigate • ${confirmKey} select${secondaryHint} • ${cancelKey} cancel`,
           ),
           innerWidth,
           side,

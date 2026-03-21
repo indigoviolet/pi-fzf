@@ -19,7 +19,7 @@ export async function runPreviewCommand(
   template: string,
   selected: string,
 ): Promise<PreviewResult> {
-  const rendered = renderTemplate(template, selected);
+  const rendered = renderTemplate(template, { selected: selected.trim() });
 
   const result = await exec("bash", ["-c", rendered], { timeout: 5000 });
 

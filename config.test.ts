@@ -4,104 +4,95 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { stringify as stringifyYaml } from "yaml";
 import {
+  extractFields,
   loadFzfConfig,
   loadFzfSettings,
   renderTemplate,
-  resolveAction,
 } from "./config.js";
 
 describe("renderTemplate", () => {
   it("replaces {{selected}} placeholder", () => {
-    expect(renderTemplate("Read {{selected}}", "foo.ts")).toBe("Read foo.ts");
+    expect(renderTemplate("Read {{selected}}", { selected: "foo.ts" })).toBe(
+      "Read foo.ts",
+    );
   });
 
   it("replaces multiple occurrences", () => {
-    expect(renderTemplate("{{selected}} and {{selected}}", "x")).toBe(
-      "x and x",
-    );
+    expect(
+      renderTemplate("{{selected}} and {{selected}}", { selected: "x" }),
+    ).toBe("x and x");
   });
 
-  it("trims the selected value", () => {
-    expect(renderTemplate("file: {{selected}}", "  foo.ts  ")).toBe(
-      "file: foo.ts",
-    );
+  it("replaces named placeholders from extract groups", () => {
+    expect(
+      renderTemplate("{{name}} (@{{path}}:{{line}})", {
+        selected: "foo  src/bar.ts:42",
+        name: "foo",
+        path: "src/bar.ts",
+        line: "42",
+      }),
+    ).toBe("foo (@src/bar.ts:42)");
+  });
+
+  it("leaves unmatched placeholders as-is", () => {
+    expect(
+      renderTemplate("{{name}} {{unknown}}", {
+        selected: "test",
+        name: "foo",
+      }),
+    ).toBe("foo {{unknown}}");
   });
 
   it("returns template unchanged if no placeholder", () => {
-    expect(renderTemplate("no placeholder", "ignored")).toBe("no placeholder");
+    expect(renderTemplate("no placeholder", { selected: "ignored" })).toBe(
+      "no placeholder",
+    );
   });
 });
 
-describe("resolveAction", () => {
-  it("converts short form string to editor action", () => {
-    const result = resolveAction("Read {{selected}}");
-    expect(result).toEqual({
-      type: "editor",
-      template: "Read {{selected}}",
-      output: "notify",
+describe("extractFields", () => {
+  it("returns selected when no pattern", () => {
+    const fields = extractFields("hello world");
+    expect(fields).toEqual({ selected: "hello world" });
+  });
+
+  it("trims selected value", () => {
+    const fields = extractFields("  hello  ");
+    expect(fields).toEqual({ selected: "hello" });
+  });
+
+  it("extracts named capture groups", () => {
+    const fields = extractFields(
+      "MyClass.myMethod  src/foo.ts:42",
+      "^(?<name>.+?)  (?<path>[^:]+):(?<line>\\d+)$",
+    );
+    expect(fields).toEqual({
+      selected: "MyClass.myMethod  src/foo.ts:42",
+      name: "MyClass.myMethod",
+      path: "src/foo.ts",
+      line: "42",
     });
   });
 
-  it("preserves long form editor action", () => {
-    const result = resolveAction({
-      type: "editor",
-      template: "{{selected}}",
-    });
-    expect(result).toEqual({
-      type: "editor",
-      template: "{{selected}}",
-      output: "notify",
-    });
-  });
-
-  it("preserves long form send action", () => {
-    const result = resolveAction({
-      type: "send",
-      template: "{{selected}}",
-    });
-    expect(result).toEqual({
-      type: "send",
-      template: "{{selected}}",
-      output: "notify",
+  it("extracts partial match", () => {
+    const fields = extractFields(
+      "OPEN  #123  Fix bug  @user",
+      "#(?<number>\\d+)",
+    );
+    expect(fields).toEqual({
+      selected: "OPEN  #123  Fix bug  @user",
+      number: "123",
     });
   });
 
-  it("preserves long form bash action with default output", () => {
-    const result = resolveAction({
-      type: "bash",
-      template: "cat {{selected}}",
-    });
-    expect(result).toEqual({
-      type: "bash",
-      template: "cat {{selected}}",
-      output: "notify",
-    });
+  it("returns only selected when pattern does not match", () => {
+    const fields = extractFields("no match here", "^(?<num>\\d+)$");
+    expect(fields).toEqual({ selected: "no match here" });
   });
 
-  it("preserves explicit output option", () => {
-    const result = resolveAction({
-      type: "bash",
-      template: "cat {{selected}}",
-      output: "editor",
-    });
-    expect(result).toEqual({
-      type: "bash",
-      template: "cat {{selected}}",
-      output: "editor",
-    });
-  });
-
-  it("supports send output option", () => {
-    const result = resolveAction({
-      type: "bash",
-      template: "echo hello",
-      output: "send",
-    });
-    expect(result).toEqual({
-      type: "bash",
-      template: "echo hello",
-      output: "send",
-    });
+  it("returns only selected when pattern has no named groups", () => {
+    const fields = extractFields("abc123", "(\\d+)");
+    expect(fields).toEqual({ selected: "abc123" });
   });
 });
 
@@ -135,11 +126,72 @@ describe("loadFzfConfig", () => {
     expect(testCmd).toMatchObject({
       name: "test",
       list: "ls",
-      action: {
-        type: "editor",
-        template: "Read {{selected}}",
-        output: "notify",
+      action: "Read {{selected}}",
+    });
+  });
+
+  it("loads extract pattern", () => {
+    writeProjectConfig({
+      commands: {
+        test: {
+          list: "ls",
+          action: "{{name}}",
+          extract: "^(?<name>.+)$",
+        },
       },
+    });
+
+    const result = loadFzfConfig(testDir);
+    const testCmd = result.find((c) => c.name === "test");
+
+    expect(testCmd?.extract).toBe("^(?<name>.+)$");
+  });
+
+  it("loads bash secondary action", () => {
+    writeProjectConfig({
+      commands: {
+        test: {
+          list: "ls",
+          action: "{{selected}}",
+          secondaryAction: {
+            type: "bash",
+            command: "open {{selected}}",
+          },
+        },
+      },
+    });
+
+    const result = loadFzfConfig(testDir);
+    const testCmd = result.find((c) => c.name === "test");
+
+    expect(testCmd?.secondaryAction).toEqual({
+      type: "bash",
+      command: "open {{selected}}",
+    });
+  });
+
+  it("loads event secondary action", () => {
+    writeProjectConfig({
+      commands: {
+        test: {
+          list: "ls",
+          action: "{{selected}}",
+          secondaryAction: {
+            type: "event",
+            event: "external-editor:open",
+            args: { path: "{{selected}}" },
+          },
+        },
+      },
+    });
+
+    const result = loadFzfConfig(testDir);
+    const testCmd = result.find((c) => c.name === "test");
+
+    expect(testCmd?.secondaryAction).toEqual({
+      type: "event",
+      event: "external-editor:open",
+      args: { path: "{{selected}}" },
     });
   });
 
@@ -147,10 +199,7 @@ describe("loadFzfConfig", () => {
     writeProjectConfig({
       commands: {
         foo: { list: "ls -a", action: "{{selected}}" },
-        bar: {
-          list: "git branch",
-          action: { type: "bash", template: "git checkout {{selected}}" },
-        },
+        bar: { list: "git branch", action: "{{selected}}" },
       },
     });
 
@@ -391,6 +440,7 @@ describe("loadFzfSettings", () => {
     expect(settings.previewScrollLines).toBe(5);
     expect(settings.unboundCommandsShortcut).toBe("ctrl+/");
     expect(settings.unboundCommandsPlacement).toBe("belowEditor");
+    expect(settings.secondaryActionKey).toBe("alt+enter");
   });
 
   it("loads custom keybindings from settings", () => {
@@ -419,6 +469,19 @@ describe("loadFzfSettings", () => {
     const settings = loadFzfSettings(testDir);
 
     expect(settings.previewScrollLines).toBe(10);
+  });
+
+  it("loads custom secondary action key from settings", () => {
+    writeProjectConfig({
+      commands: {},
+      settings: {
+        secondaryActionKey: "ctrl+o",
+      },
+    });
+
+    const settings = loadFzfSettings(testDir);
+
+    expect(settings.secondaryActionKey).toBe("ctrl+o");
   });
 
   it("loads unbound command shortcut from settings", () => {
@@ -476,5 +539,6 @@ describe("loadFzfSettings", () => {
     expect(settings.previewScrollLines).toBe(5);
     expect(settings.unboundCommandsShortcut).toBe("ctrl+/");
     expect(settings.unboundCommandsPlacement).toBe("belowEditor");
+    expect(settings.secondaryActionKey).toBe("alt+enter");
   });
 });

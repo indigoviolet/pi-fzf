@@ -2,55 +2,50 @@ import type {
   ExtensionAPI,
   ExtensionCommandContext,
 } from "@mariozechner/pi-coding-agent";
-import type { ResolvedAction } from "./config.js";
+import type { FzfSecondaryAction } from "./config.js";
 import { renderTemplate } from "./config.js";
 
 /**
- * Execute an action with the selected candidate value.
+ * Execute the primary action: render the template and paste to editor.
  */
-export async function executeAction(
-  action: ResolvedAction,
-  selected: string,
+export function executePrimaryAction(
+  actionTemplate: string,
+  fields: Record<string, string>,
+  ctx: ExtensionCommandContext,
+): void {
+  const rendered = renderTemplate(actionTemplate, fields);
+  ctx.ui.pasteToEditor(rendered);
+}
+
+/**
+ * Execute a secondary action (bash command or event emission).
+ */
+export async function executeSecondaryAction(
+  action: FzfSecondaryAction,
+  fields: Record<string, string>,
   pi: ExtensionAPI,
   ctx: ExtensionCommandContext,
 ): Promise<void> {
-  const rendered = renderTemplate(action.template, selected);
-
   switch (action.type) {
-    case "editor":
-      ctx.ui.pasteToEditor(rendered);
-      break;
-
-    case "send":
-      pi.sendUserMessage(rendered);
-      break;
-
     case "bash": {
-      const result = await pi.exec("bash", ["-c", rendered]);
+      const command = renderTemplate(action.command, fields);
+      const result = await pi.exec("bash", ["-c", command]);
       if (result.code !== 0) {
         const error = (result.stderr || result.stdout).trim();
         ctx.ui.notify(`✗ Exit ${result.code}: ${error.slice(0, 100)}`, "error");
-        break;
+      } else {
+        const output = result.stdout.trim();
+        ctx.ui.notify(output ? `✓ ${output.slice(0, 100)}` : "✓ Done", "info");
       }
+      break;
+    }
 
-      const output = result.stdout.trim();
-
-      switch (action.output) {
-        case "editor":
-          ctx.ui.pasteToEditor(output);
-          break;
-        case "send":
-          if (output) {
-            pi.sendUserMessage(output);
-          }
-          break;
-        default:
-          ctx.ui.notify(
-            output ? `✓ ${output.slice(0, 100)}` : "✓ Done",
-            "info",
-          );
-          break;
+    case "event": {
+      const renderedArgs: Record<string, string> = {};
+      for (const [key, value] of Object.entries(action.args)) {
+        renderedArgs[key] = renderTemplate(value, fields);
       }
+      pi.events.emit(action.event, { ...renderedArgs, cwd: ctx.cwd });
       break;
     }
   }

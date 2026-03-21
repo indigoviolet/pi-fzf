@@ -15,11 +15,7 @@ function makeCommand(
   return {
     name,
     list: `echo ${name}`,
-    action: {
-      type: "editor",
-      template: "{{selected}}",
-      output: "notify",
-    },
+    action: "{{selected}}",
     placement: "overlay",
     hideHeader: false,
     ...overrides,

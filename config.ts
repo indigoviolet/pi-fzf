@@ -5,18 +5,22 @@ import { parse as parseYaml } from "yaml";
 
 // --- Types ---
 
-export type BashOutput = "notify" | "editor" | "send";
 export type SelectorPlacement = "overlay" | "aboveEditor" | "belowEditor";
 
-export interface FzfActionLong {
-  type: "editor" | "send" | "bash";
-  template: string;
-  /** For bash actions: where to send the output (default: "notify") */
-  output?: BashOutput;
+export interface FzfSecondaryActionBash {
+  type: "bash";
+  command: string;
 }
 
-/** Short form (string) defaults to editor type */
-export type FzfAction = string | FzfActionLong;
+export interface FzfSecondaryActionEvent {
+  type: "event";
+  event: string;
+  args: Record<string, string>;
+}
+
+export type FzfSecondaryAction =
+  | FzfSecondaryActionBash
+  | FzfSecondaryActionEvent;
 
 export interface FzfCacheConfig {
   /** bkt TTL duration (e.g. "5m", "10m") */
@@ -30,8 +34,12 @@ export interface FzfCacheConfig {
 export interface FzfCommandConfig {
   /** Bash command that outputs candidates, one per line */
   list: string;
-  /** Action to perform on the selected candidate */
-  action: FzfAction;
+  /** Template string pasted to editor on select (supports {{selected}} and extract groups) */
+  action: string;
+  /** Regex with named capture groups to extract fields from selected line */
+  extract?: string;
+  /** Secondary action triggered by alt+enter (bash command or event) */
+  secondaryAction?: FzfSecondaryAction;
   /** Optional keyboard shortcut (e.g. "ctrl+shift+f") */
   shortcut?: string;
   /** Optional preview command (receives {{selected}} placeholder) */
@@ -55,6 +63,8 @@ export interface FzfSettingsConfig {
   unboundCommandsShortcut?: string;
   /** Placement for the unbound-commands picker (default: "belowEditor") */
   unboundCommandsPlacement?: SelectorPlacement;
+  /** Keybinding for secondary action (default: "alt+enter") */
+  secondaryActionKey?: string;
 }
 
 export interface FzfConfig {
@@ -66,17 +76,15 @@ export interface FzfConfig {
 
 // --- Normalized types (resolved after parsing) ---
 
-export interface ResolvedAction {
-  type: "editor" | "send" | "bash";
-  template: string;
-  /** For bash actions: where to send the output (default: "notify") */
-  output: BashOutput;
-}
-
 export interface ResolvedCommand {
   name: string;
   list: string;
-  action: ResolvedAction;
+  /** Template string pasted to editor on select */
+  action: string;
+  /** Regex with named capture groups to extract fields from selected line */
+  extract?: string;
+  /** Secondary action triggered by alt+enter */
+  secondaryAction?: FzfSecondaryAction;
   /** Optional keyboard shortcut (e.g. "ctrl+shift+f") */
   shortcut?: string;
   /** Optional preview command (receives {{selected}} placeholder) */
@@ -100,6 +108,8 @@ export interface FzfSettings {
   unboundCommandsShortcut?: string;
   /** Placement for the unbound-commands picker */
   unboundCommandsPlacement: SelectorPlacement;
+  /** Keybinding for secondary action */
+  secondaryActionKey: string;
 }
 
 const DEFAULT_SETTINGS: FzfSettings = {
@@ -108,6 +118,7 @@ const DEFAULT_SETTINGS: FzfSettings = {
   previewScrollLines: 5,
   unboundCommandsShortcut: "ctrl+/",
   unboundCommandsPlacement: "belowEditor",
+  secondaryActionKey: "alt+enter",
 };
 
 // --- Config loading ---
@@ -125,20 +136,6 @@ function loadConfigFile(path: string): FzfConfig | null {
     console.error(`pi-fzf: Failed to load config from ${path}: ${err}`);
     return null;
   }
-}
-
-/**
- * Resolve the short/long action form into a consistent ResolvedAction.
- */
-export function resolveAction(action: FzfAction): ResolvedAction {
-  if (typeof action === "string") {
-    return { type: "editor", template: action, output: "notify" };
-  }
-  return {
-    type: action.type,
-    template: action.template,
-    output: action.output ?? "notify",
-  };
 }
 
 /**
@@ -167,7 +164,9 @@ export function loadFzfConfig(cwd: string): ResolvedCommand[] {
   return Object.entries(merged).map(([name, cmd]) => ({
     name,
     list: cmd.list,
-    action: resolveAction(cmd.action),
+    action: cmd.action,
+    extract: cmd.extract,
+    secondaryAction: cmd.secondaryAction,
     shortcut: cmd.shortcut,
     preview: cmd.preview,
     placement: cmd.placement ?? defaultPlacement,
@@ -212,12 +211,46 @@ export function loadFzfSettings(cwd: string): FzfSettings {
       projectSettings.unboundCommandsPlacement ??
       globalSettings.unboundCommandsPlacement ??
       DEFAULT_SETTINGS.unboundCommandsPlacement,
+    secondaryActionKey:
+      projectSettings.secondaryActionKey ??
+      globalSettings.secondaryActionKey ??
+      DEFAULT_SETTINGS.secondaryActionKey,
   };
 }
 
 /**
- * Replace {{selected}} placeholder in a template with the selected value.
+ * Extract named fields from a selected line using a regex pattern.
+ * Always includes `selected` (the full raw line).
+ * Named capture groups become additional fields.
  */
-export function renderTemplate(template: string, selected: string): string {
-  return template.replaceAll("{{selected}}", selected.trim());
+export function extractFields(
+  selected: string,
+  pattern?: string,
+): Record<string, string> {
+  const fields: Record<string, string> = { selected: selected.trim() };
+  if (!pattern) return fields;
+
+  const match = new RegExp(pattern).exec(selected);
+  if (match?.groups) {
+    for (const [key, value] of Object.entries(match.groups)) {
+      if (value !== undefined) {
+        fields[key] = value;
+      }
+    }
+  }
+  return fields;
+}
+
+/**
+ * Replace {{placeholder}} references in a template with field values.
+ * Unmatched placeholders are left as-is.
+ */
+export function renderTemplate(
+  template: string,
+  fields: Record<string, string>,
+): string {
+  return template.replace(
+    /\{\{(\w+)\}\}/g,
+    (match, key) => fields[key] ?? match,
+  );
 }

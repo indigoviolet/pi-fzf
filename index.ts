@@ -4,9 +4,9 @@ import type {
   ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
 import type { TUI } from "@mariozechner/pi-tui";
-import { executeAction } from "./actions.js";
+import { executePrimaryAction, executeSecondaryAction } from "./actions.js";
 import type { FzfSettings, ResolvedCommand } from "./config.js";
-import { loadFzfConfig, loadFzfSettings } from "./config.js";
+import { extractFields, loadFzfConfig, loadFzfSettings } from "./config.js";
 import { type ExecFunction, runPreviewCommand } from "./preview.js";
 import type { SelectorTheme } from "./selector.js";
 import { FuzzySelector } from "./selector.js";
@@ -219,6 +219,11 @@ function registerUnboundCommandsShortcut(
   });
 }
 
+interface SelectorResult {
+  item: string;
+  action: "primary" | "secondary";
+}
+
 /**
  * Run the fzf flow: list candidates, open fuzzy selector, execute action.
  */
@@ -234,26 +239,26 @@ async function runFzfSelector(
   }
 
   // 1. Run the list command to get candidates
-  let result: { code: number; stdout: string; stderr: string };
+  let execResult: { code: number; stdout: string; stderr: string };
   if (cmd.cache) {
     const bktArgs = ["--ttl", cmd.cache.ttl];
     if (cmd.cache.stale) bktArgs.push("--stale", cmd.cache.stale);
     if (cmd.cache.cwd !== false) bktArgs.push("--cwd");
     bktArgs.push("--", "bash", "-c", cmd.list);
-    result = await pi.exec("bkt", bktArgs, { timeout: 30000 });
+    execResult = await pi.exec("bkt", bktArgs, { timeout: 30000 });
   } else {
-    result = await pi.exec("bash", ["-c", cmd.list], { timeout: 10000 });
+    execResult = await pi.exec("bash", ["-c", cmd.list], { timeout: 10000 });
   }
 
-  if (result.code !== 0) {
+  if (execResult.code !== 0) {
     ctx.ui.notify(
-      `fzf:${cmd.name}: list command failed (exit ${result.code})${result.stderr ? `\n${result.stderr}` : ""}`,
+      `fzf:${cmd.name}: list command failed (exit ${execResult.code})${execResult.stderr ? `\n${execResult.stderr}` : ""}`,
       "error",
     );
     return;
   }
 
-  const candidates = result.stdout
+  const candidates = execResult.stdout
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
@@ -291,7 +296,7 @@ async function runFzfSelector(
           overlay: true,
         };
 
-  const selected = await ctx.ui.custom<string | null>(
+  const result = await ctx.ui.custom<SelectorResult | null>(
     (tui, theme, _kb, done) => {
       tuiRef = tui;
 
@@ -334,7 +339,11 @@ async function runFzfSelector(
         selector.triggerInitialPreview();
       }
 
-      selector.onSelect = (item) => done(item);
+      selector.onSelect = (item) => done({ item, action: "primary" });
+      if (cmd.secondaryAction) {
+        selector.onSecondaryAction = (item) =>
+          done({ item, action: "secondary" });
+      }
       selector.onCancel = () => done(null);
 
       if (cmd.placement === "overlay") {
@@ -399,8 +408,15 @@ async function runFzfSelector(
   );
 
   // 3. If user selected something, execute the action
-  if (selected !== null) {
-    await executeAction(cmd.action, selected, pi, ctx);
+  if (result !== null) {
+    const fields = extractFields(result.item, cmd.extract);
+
+    if (result.action === "primary") {
+      executePrimaryAction(cmd.action, fields, ctx);
+    } else if (result.action === "secondary" && cmd.secondaryAction) {
+      await executeSecondaryAction(cmd.secondaryAction, fields, pi, ctx);
+    }
+
     // Explicitly request render to ensure the editor shows
     // the new text after the overlay closed
     tuiRef?.requestRender();

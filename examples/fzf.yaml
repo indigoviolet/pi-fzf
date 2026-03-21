@@ -2,43 +2,108 @@ settings:
   previewScrollUp: shift+up
   previewScrollDown: shift+down
   previewScrollLines: 5
+  secondaryActionKey: alt+enter
 
 commands:
   file:
     list: fd --type f --max-depth 4
-    action: "Read and explain {{selected}}"
+    action: "@{{selected}}"
     shortcut: ctrl+shift+f
     preview: bat --style=numbers --color=always {{selected}} 2>/dev/null || cat {{selected}}
+    secondaryAction:
+      type: event
+      event: "external-editor:open"
+      args:
+        path: "{{selected}}"
 
-  file-content:
-    list: fd --type f --max-depth 4
-    action:
-      type: bash
-      template: cat {{selected}}
-      output: editor
-
-  skill:
-    list: "fd -L 'SKILL.md' ~/.pi/agent/skills ~/.pi/agent/git 2>/dev/null | sed -E 's|.*/skills/([^/]+)/SKILL\\.md|\\1|' | grep -v '/' | sort -u"
-    action:
-      type: editor
-      template: "/skill:{{selected}}"
+  sym:
+    list: |
+      ctags -R \
+        --languages=Python,TypeScript \
+        --kinds-Python=cfm \
+        --kinds-TypeScript=fcimCpv \
+        --fields=+KSn \
+        --output-format=json \
+        --exclude=node_modules --exclude=.venv --exclude=__pycache__ \
+        --exclude=dist --exclude=build --exclude='*.min.*' \
+        --exclude=.git --exclude=generated \
+        -f - . 2>/dev/null \
+      | jq -r '
+          if .scope then "\(.scope).\(.name)  \(.path):\(.line)"
+          else "\(.name)  \(.path):\(.line)"
+          end
+        '
+    cache:
+      ttl: 5m
+    extract: "^(?<name>.+?)  (?<path>[^:]+):(?<line>\\d+)$"
+    action: "{{name}} (@{{path}}:{{line}})"
+    preview: |
+      selected='{{selected}}'
+      loc=${selected##*  }
+      f=${loc%%:*}
+      l=${loc##*:}
+      bat --style=numbers --color=always --highlight-line "$l" \
+        --line-range "$((l > 5 ? l - 5 : 1)):$((l + 20))" "$f" 2>/dev/null
+    shortcut: "#"
+    secondaryAction:
+      type: event
+      event: "external-editor:open"
+      args:
+        path: "{{path}}:{{line}}"
 
   branch:
     list: "git branch --format='%(refname:short)'"
-    action:
-      type: bash
-      template: git checkout {{selected}}
+    action: "{{selected}}"
     preview: git log --oneline -10 {{selected}}
-
-  git-diff:
-    list: git diff --name-only
-    action:
+    secondaryAction:
       type: bash
-      template: git diff {{selected}}
-      output: editor
+      command: git checkout {{selected}}
+
+  pr:
+    list: |
+      {
+        gh pr list --author=@me --limit 100 --state all \
+          --json number,title,author,isDraft,state \
+          --jq '.[] | "\(.state)  #\(.number)  \(.title)  @\(.author.login)\(if .isDraft then " [draft]" else "" end)"'
+        gh pr list --limit 100 --state all \
+          --json number,title,author,isDraft,state \
+          --jq '.[] | "\(.state)  #\(.number)  \(.title)  @\(.author.login)\(if .isDraft then " [draft]" else "" end)"'
+      } | awk '!seen[$0]++' \
+        | awk '/^OPEN/{print "1" $0; next} /^MERGED/{print "2" $0; next} {print "3" $0}' \
+        | sort -k1,1 -s \
+        | sed 's/^.//'
+    cache:
+      ttl: 10m
+      stale: 2m
+    extract: "#(?<number>\\d+)"
+    action: "#{{number}}"
+    secondaryAction:
+      type: bash
+      command: "gh pr view {{number}} --web"
+
+  issue:
+    list: |
+      {
+        gh issue list --state open --assignee=@me --limit 100 \
+          --json number,title,author,labels \
+          --jq '.[] | "#\(.number)  \(.title)  @\(.author.login)\(if (.labels | length) > 0 then "  [\(.labels | map(.name) | join(", "))]" else "" end)"'
+        gh issue list --state open --limit 100 \
+          --json number,title,author,labels \
+          --jq '.[] | "#\(.number)  \(.title)  @\(.author.login)\(if (.labels | length) > 0 then "  [\(.labels | map(.name) | join(", "))]" else "" end)"'
+      } | awk '!seen[$0]++'
+    cache:
+      ttl: 10m
+      stale: 2m
+    extract: "#(?<number>\\d+)"
+    action: "#{{number}}"
+    secondaryAction:
+      type: bash
+      command: "gh issue view {{number}} --web"
+
+  skill:
+    list: "fd -L 'SKILL.md' ~/.pi/agent/skills ~/.pi/agent/git 2>/dev/null | sed -E 's|.*/skills/([^/]+)/SKILL\\.md|\\1|' | grep -v '/' | sort -u"
+    action: "/skill:{{selected}}"
 
   todo:
     list: rg -l 'TODO|FIXME' || true
-    action:
-      type: editor
-      template: "Find and fix all TODOs in {{selected}}"
+    action: "Find and fix all TODOs in {{selected}}"
