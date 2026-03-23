@@ -49,7 +49,8 @@ commands:
       type: event
       event: "external-editor:open"
       args:
-        path: "{{path}}:{{line}}"
+        path: "{{path}}"
+        line: "{{line}}"
 
   branch:
     list: "git branch --format='%(refname:short)'"
