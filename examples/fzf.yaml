@@ -62,20 +62,27 @@ commands:
 
   pr:
     list: |
+      DATE3M=$(date -v-3m +%Y-%m-%d 2>/dev/null || date -d '3 months ago' +%Y-%m-%d)
+      DATE2M=$(date -v-2m +%Y-%m-%d 2>/dev/null || date -d '2 months ago' +%Y-%m-%d)
+      JSON='number,title,author,isDraft,state'
+      JQ='.[] | "\(.state)  #\(.number)  \(.title)  @\(.author.login)\(if .isDraft then " [draft]" else "" end)"'
       {
-        gh pr list --author=@me --limit 100 --state all \
-          --json number,title,author,isDraft,state \
-          --jq '.[] | "\(.state)  #\(.number)  \(.title)  @\(.author.login)\(if .isDraft then " [draft]" else "" end)"'
-        gh pr list --limit 100 --state all \
-          --json number,title,author,isDraft,state \
-          --jq '.[] | "\(.state)  #\(.number)  \(.title)  @\(.author.login)\(if .isDraft then " [draft]" else "" end)"'
+        gh pr list --author=@me --search "-is:closed updated:>=$DATE3M" --state all --limit 500 \
+          --json $JSON --jq "$JQ" &
+        gh pr list --author=@me --state closed --search "updated:>=$DATE2M" --limit 500 \
+          --json $JSON --jq "$JQ" &
+        gh pr list --search "-author:@me" --state open --limit 1000 \
+          --json $JSON --jq "$JQ" &
+        gh pr list --search "-author:@me -is:open updated:>=$DATE3M" --state all --limit 1000 \
+          --json $JSON --jq "$JQ" &
+        wait
       } | awk '!seen[$0]++' \
         | awk '/^OPEN/{print "1" $0; next} /^MERGED/{print "2" $0; next} {print "3" $0}' \
         | sort -k1,1 -s \
         | sed 's/^.//'
     cache:
-      ttl: 10m
-      stale: 2m
+      ttl: 1d
+      stale: 5m
     extract: "#(?<number>\\d+)"
     action: "#{{number}}"
     secondaryAction:
