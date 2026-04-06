@@ -118,6 +118,82 @@ describe("runPreviewCommand", () => {
     });
   });
 
+  it("returns binary file message when output contains null bytes", async () => {
+    const mockExec = vi.fn().mockResolvedValue({
+      code: 0,
+      stdout: "\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR",
+      stderr: "",
+    });
+
+    const result = await runPreviewCommand(
+      mockExec,
+      "cat {{selected}}",
+      "image.png",
+    );
+
+    expect(result).toEqual({
+      lines: ["(binary file)"],
+      error: null,
+    });
+  });
+
+  it("strips control characters from non-binary output", async () => {
+    const mockExec = vi.fn().mockResolvedValue({
+      code: 0,
+      stdout: "hello\x01world\nfoo\x7fbar",
+      stderr: "",
+    });
+
+    const result = await runPreviewCommand(
+      mockExec,
+      "cat {{selected}}",
+      "file.txt",
+    );
+
+    expect(result).toEqual({
+      lines: ["helloworld", "foobar"],
+      error: null,
+    });
+  });
+
+  it("preserves ANSI escape sequences in output", async () => {
+    const mockExec = vi.fn().mockResolvedValue({
+      code: 0,
+      stdout: "\x1b[31mred text\x1b[0m\nnormal",
+      stderr: "",
+    });
+
+    const result = await runPreviewCommand(
+      mockExec,
+      "cat {{selected}}",
+      "file.txt",
+    );
+
+    expect(result).toEqual({
+      lines: ["\x1b[31mred text\x1b[0m", "normal"],
+      error: null,
+    });
+  });
+
+  it("replaces tabs with spaces in output", async () => {
+    const mockExec = vi.fn().mockResolvedValue({
+      code: 0,
+      stdout: "col1\tcol2\tcol3",
+      stderr: "",
+    });
+
+    const result = await runPreviewCommand(
+      mockExec,
+      "cat {{selected}}",
+      "file.tsv",
+    );
+
+    expect(result).toEqual({
+      lines: ["col1    col2    col3"],
+      error: null,
+    });
+  });
+
   it("filters out empty lines from output", async () => {
     const mockExec = vi.fn().mockResolvedValue({
       code: 0,
